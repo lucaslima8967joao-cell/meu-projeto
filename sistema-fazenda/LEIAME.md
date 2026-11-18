@@ -22,11 +22,7 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 ### 1. Criar o banco de dados (Supabase, gratuito)
 1. Acesse **supabase.com** → *Start your project* → entre com a conta Google ou GitHub.
 2. *New project*: nome `fazenda`, escolha uma **senha forte do banco** (guarde num lugar seguro), região **South America (São Paulo)**.
-3. No menu da esquerda: **SQL Editor** → *New query* → cole TODO o conteúdo de cada arquivo abaixo, **um de cada vez e nesta ordem**, clicando em **Run** a cada um (deve aparecer *Success*):
-   1. `supabase/migrations/001_mvp.sql` — estrutura e regras de acesso
-   2. `supabase/migrations/002_areas_categorias_vendas.sql` — categorias por idade, áreas e vendas
-   3. `supabase/migrations/003_importacao_fazenda2.sql` — **importa as 60 áreas e as 5 vendas de 2026** (só pode rodar uma vez; se rodar de novo, ele avisa e não duplica)
-   4. `supabase/migrations/004_offline.sql` — permite lançar sem internet sem duplicar
+3. No menu da esquerda: **SQL Editor** → *New query* → abra o arquivo `supabase/INSTALAR_TUDO.sql`, copie **tudo**, cole e clique em **Run**. Deve aparecer *Success*. Isso cria o banco e já importa as 60 áreas e as 5 vendas de 2026. (Rode só uma vez.)
 4. **Authentication → Sign In / Providers → Email**: deixe ativado. (Opcional: desligar *Confirm email* para não exigir confirmação por e-mail.)
 5. **Project Settings → API**: copie a **Project URL** e a chave **anon / publishable**.
    ⚠️ Nunca use nem compartilhe a chave **service_role / secret**.
