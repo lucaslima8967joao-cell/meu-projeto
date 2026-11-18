@@ -6,7 +6,7 @@ import { useListas } from '../lib/dados'
 import { useAuth } from '../auth'
 
 const VAZIO = { fazenda_id: '', controle: '', chip: '', brinco: '', nome: '', sexo: '', raca: 'NEL', nascimento: '', categoria: '',
-  lote_id: '', pasto_id: '', pai_descricao: '', situacao: 'ativo', obs: '', peso_inicial: '' }
+  lote_id: '', pasto_id: '', pai_descricao: '', situacao: 'ativo', obs: '', peso_inicial: '', matriz: false as boolean, touro: false as boolean }
 
 export default function AnimalForm() {
   const { id } = useParams()
@@ -21,7 +21,7 @@ export default function AnimalForm() {
     supabase.from('animais').select('*').eq('id', id).single().then(({ data }) => {
       if (!data) return
       const d = data as Record<string, unknown>
-      setV({ ...VAZIO, ...Object.fromEntries(Object.entries(d).map(([k, x]) => [k, x ?? ''])) } as typeof VAZIO)
+      setV({ ...VAZIO, ...Object.fromEntries(Object.entries(d).map(([k, x]) => [k, x ?? ''])), matriz: Boolean(d.matriz), touro: Boolean(d.touro) } as typeof VAZIO)
     })
   }, [id])
   useEffect(() => { if (!id && !v.fazenda_id && fazendas.length === 1) setV(x => ({ ...x, fazenda_id: fazendas[0].id })) }, [fazendas, id, v.fazenda_id])
@@ -38,7 +38,7 @@ export default function AnimalForm() {
     const dados = {
       fazenda_id: v.fazenda_id, controle: limpo(v.controle), chip: limpo(v.chip), brinco: limpo(v.brinco), nome: limpo(v.nome),
       sexo: v.sexo, raca: limpo(v.raca), nascimento: v.nascimento || null, categoria: limpo(v.categoria),
-      lote_id: v.lote_id || null, pasto_id: v.pasto_id || null, pai_descricao: limpo(v.pai_descricao), situacao: v.situacao, obs: limpo(v.obs),
+      lote_id: v.lote_id || null, pasto_id: v.pasto_id || null, pai_descricao: limpo(v.pai_descricao), situacao: v.situacao, obs: limpo(v.obs), matriz: v.sexo === 'F' && v.matriz, touro: v.sexo === 'M' && v.touro,
     }
     const r = id ? await supabase.from('animais').update(dados).eq('id', id).select('id').single()
                  : await supabase.from('animais').insert(dados).select('id').single()
@@ -60,7 +60,9 @@ export default function AnimalForm() {
         <label>Sexo *<select required value={v.sexo} onChange={set('sexo')}><option value="">Escolha…</option><option value="M">Macho</option><option value="F">Fêmea</option></select></label>
         <label>Raça<input list="racas" value={v.raca} onChange={set('raca')} /><datalist id="racas">{RACAS.map(r => <option key={r} value={r} />)}</datalist></label>
         <label>Nascimento<input type="date" max={hojeISO()} value={v.nascimento} onChange={set('nascimento')} /></label>
-        <label>Categoria<select value={v.categoria} onChange={set('categoria')}><option value="">—</option>{CATEGORIAS.map(c => <option key={c}>{c}</option>)}</select></label>
+        {!v.nascimento && <label>Categoria (sem data de nascimento)<select value={v.categoria} onChange={set('categoria')}><option value="">—</option>{CATEGORIAS.map(c => <option key={c}>{c}</option>)}</select></label>}
+        {v.sexo === 'F' && <label className="check"><input type="checkbox" checked={v.matriz} onChange={e => setV({ ...v, matriz: e.target.checked })} /> Matriz (reprodução)</label>}
+        {v.sexo === 'M' && <label className="check"><input type="checkbox" checked={v.touro} onChange={e => setV({ ...v, touro: e.target.checked })} /> Touro</label>}
         <label>Lote<select value={v.lote_id} onChange={set('lote_id')}><option value="">—</option>{lotes.filter(l => l.fazenda_id === v.fazenda_id).map(l => <option key={l.id} value={l.id}>{l.nome}</option>)}</select></label>
         <label>Pasto<select value={v.pasto_id} onChange={set('pasto_id')}><option value="">—</option>{pastos.filter(p => p.fazenda_id === v.fazenda_id).map(p => <option key={p.id} value={p.id}>{p.codigo}</option>)}</select></label>
         <label>Pai (descrição)<input placeholder="ex.: touro, sêmen" value={v.pai_descricao} onChange={set('pai_descricao')} /></label>

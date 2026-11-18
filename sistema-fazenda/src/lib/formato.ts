@@ -47,6 +47,23 @@ export const SITUACAO: Record<string, string> = {
 export const PRIORIDADE: Record<string, string> = { baixa: 'Baixa', media: 'Média', alta: 'Alta' }
 export const STATUS: Record<string, string> = { pendente: 'Pendente', andamento: 'Em andamento', concluida: 'Concluída' }
 
-// Listas iniciais — ajustáveis depois que a fazenda confirmar as categorias usadas.
-export const CATEGORIAS = ['Bezerro', 'Bezerra', 'Garrote', 'Novilha', 'Boi', 'Vaca', 'Touro']
+// Mesmas faixas do Relatório Mensal do Rebanho. A categoria é calculada pela idade;
+// a lista abaixo só é usada quando o animal não tem data de nascimento.
+export const CATEGORIAS = ['Bezerra 0-4 m', 'Bezerra 5-12 m', 'Novilha 13-24 m', 'Novilha 25-36 m', 'Vaca acima de 36 m',
+  'Bezerro 0-4 m', 'Bezerro 5-12 m', 'Garrote 13-24 m', 'Garrote 25-36 m', 'Boi acima de 36 m', 'Touro']
+export const TIPOS_AREA = ['Pasto', 'Agricultura', 'Reflorestamento/Mata', 'Desmatado/Sem definição', 'Eucalipto', 'Outro']
+
+export function reais(v?: number | null) {
+  if (v === null || v === undefined) return '—'
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+/** Baixa uma lista como CSV que o Excel abre direto (ponto e vírgula, UTF-8 com BOM). */
+export function baixarCSV(nome: string, cab: string[], linhas: unknown[][]) {
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const corpo = [cab, ...linhas].map(l => l.map(esc).join(';')).join('\r\n')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + corpo], { type: 'text/csv;charset=utf-8' }))
+  a.download = nome; a.click()
+}
 export const RACAS = ['NEL', 'Angus', 'Cruzado', 'Outra']

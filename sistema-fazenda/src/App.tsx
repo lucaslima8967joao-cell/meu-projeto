@@ -11,9 +11,10 @@ import Pastos from './pages/Pastos'
 import Tarefas from './pages/Tarefas'
 import Usuarios from './pages/Usuarios'
 import NovaSenha from './pages/NovaSenha'
+import { Vendas, VendaDetalhe } from './pages/Vendas'
 
 export default function App() {
-  const { sessao, perfil, carregando, admin, recuperando } = useAuth()
+  const { sessao, perfil, carregando, admin, gestor, recuperando } = useAuth()
 
   if (!configurado) return (
     <div className="centro"><div className="cartao">
@@ -43,7 +44,8 @@ export default function App() {
         <NavLink to="/" end>Painel</NavLink>
         <NavLink to="/animais">Animais</NavLink>
         <NavLink to="/nascimento">Nascimento</NavLink>
-        <NavLink to="/pastos">Pastos e lotes</NavLink>
+        <NavLink to="/pastos">Áreas e lotes</NavLink>
+        {gestor && <NavLink to="/vendas">Vendas</NavLink>}
         <NavLink to="/tarefas">Tarefas</NavLink>
         {admin && <NavLink to="/usuarios">Usuários</NavLink>}
       </nav>
@@ -56,6 +58,8 @@ export default function App() {
           <Route path="/animais/:id/editar" element={<AnimalForm />} />
           <Route path="/nascimento" element={<Nascimento />} />
           <Route path="/pastos" element={<Pastos />} />
+          <Route path="/vendas" element={gestor ? <Vendas /> : <Navigate to="/" />} />
+          <Route path="/vendas/:id" element={gestor ? <VendaDetalhe /> : <Navigate to="/" />} />
           <Route path="/tarefas" element={<Tarefas />} />
           <Route path="/usuarios" element={admin ? <Usuarios /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />

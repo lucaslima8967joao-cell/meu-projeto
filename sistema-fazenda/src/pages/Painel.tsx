@@ -19,7 +19,7 @@ export default function Painel() {
     const hoje = hojeISO()
     const d30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
     Promise.all([
-      buscarTodos<{ sexo: string; categoria: string | null }>((de, ate) => supabase.from('animais').select('sexo, categoria').eq('situacao', 'ativo').eq('arquivado', false).order('id').range(de, ate)),
+      buscarTodos<{ sexo: string; categoria: string | null }>((de, ate) => supabase.from('v_animais').select('sexo, categoria:categoria_atual').eq('situacao', 'ativo').eq('arquivado', false).order('id').range(de, ate)),
       supabase.from('nascimentos').select('id', { count: 'exact', head: true }).gte('data', d30),
       supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('data', hoje).neq('status', 'concluida').eq('arquivado', false),
       supabase.from('tarefas').select('id', { count: 'exact', head: true }).lt('data', hoje).neq('status', 'concluida').eq('arquivado', false),

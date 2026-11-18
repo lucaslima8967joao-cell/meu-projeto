@@ -84,7 +84,7 @@ export default function AnimalDetalhe() {
             <dt>Sexo</dt><dd>{SEXO[a.sexo]}</dd>
             <dt>Raça</dt><dd>{a.raca || '—'}</dd>
             <dt>Nascimento</dt><dd>{dataBR(a.nascimento)} ({idade(a.idade_meses)})</dd>
-            <dt>Categoria</dt><dd>{a.categoria || '—'}</dd>
+            <dt>Categoria</dt><dd>{a.categoria_atual || '—'}{a.matriz ? ' · Matriz' : ''}</dd>
             <dt>Situação</dt><dd>{SITUACAO[a.situacao]}</dd>
             <dt>Fazenda</dt><dd>{a.fazenda_nome}</dd>
             <dt>Lote</dt><dd>{a.lote_nome || '—'}</dd>

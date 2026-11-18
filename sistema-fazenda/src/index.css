@@ -64,3 +64,5 @@ tr.pendente { background: var(--alerta-claro); }
 .t-acoes { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-top: .5rem; }
 .status { font-size: .8rem; font-weight: 600; margin-right: auto; } .st-pendente { color: var(--alerta); } .st-andamento { color: var(--verde); } .st-concluida { color: var(--ok); }
 .grupo h2 { margin-top: 1rem; } .dicas { color: var(--suave); }
+.aviso { color: var(--alerta); background: var(--alerta-claro); padding: .6rem; border-radius: 8px; }
+tfoot th { border-top: 2px solid var(--borda); color: var(--texto); }

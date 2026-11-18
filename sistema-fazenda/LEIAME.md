@@ -7,10 +7,11 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 | Módulo | Recursos |
 |---|---|
 | **Login e usuários** | Conta individual por pessoa · perfis Administrador, Gerente e Operador · nova conta fica bloqueada até o admin liberar · recuperação de senha |
-| **Animais** | Cadastro com controle, chip, brinco, nome, sexo, raça, nascimento, categoria, lote, pasto, pai · busca por controle/chip/brinco/nome · filtros por sexo, categoria, raça, lote, pasto, situação e idade · **impede chip/controle/brinco duplicado** · exportação para Excel (CSV) · arquivar (nunca apaga) |
+| **Animais** | Cadastro com controle, chip eletrônico, brinco, nome, sexo, raça, nascimento, lote, pasto, pai · **categoria calculada pela idade** (mesmas faixas do Relatório Mensal) · marcação de matriz e touro · busca por controle/chip/brinco/nome · filtros por sexo, categoria, raça, lote, pasto, situação e idade · **impede chip/controle/brinco duplicado** · exportação para Excel (CSV) · arquivar (nunca apaga) |
 | **Pesagens** | Histórico por animal · ganho médio diário · alerta de peso muito diferente do anterior |
 | **Nascimentos** | Busca da mãe pelo número · cria o bezerro automaticamente (aceita bezerro **sem número**, identificado pela mãe) · peso ao nascer · lista de crias na ficha da vaca |
-| **Pastos e lotes** | Fazendas, pastos (nº novo e antigo, área, lotação chuva/seca, situação, solo) · lotes · mover animal ou **lote inteiro** de pasto com histórico · ocupação atual de cada pasto |
+| **Vendas** (só admin/gerente) | Lista por ano com cabeças, peso, @ e valor · detalhe de cada venda com todos os animais · avisos de divergências da planilha · exportação para Excel |
+| **Áreas e lotes** | Áreas da Fazenda 2 com uso dividido (soja, reflorestamento, sem definição, pasto boa/média/ruim/degradada), lotação chuva/seca e capacidade em UA · lotes · mover animal ou **lote inteiro** de pasto com histórico · ocupação atual de cada pasto |
 | **Tarefas** | Hoje, atrasadas, próximas, semana, por colaborador e concluídas · prioridade, horário, pasto, responsável, equipe, materiais · iniciar/concluir com observação |
 | **Painel** | Animais ativos, nascimentos (30 dias), tarefas do dia e atrasadas, rebanho por categoria, pesagens recentes |
 | **Segurança** | Regras de acesso no próprio banco · registro de **quem alterou o quê e quando** (tabela `auditoria`) |
@@ -20,7 +21,10 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 ### 1. Criar o banco de dados (Supabase, gratuito)
 1. Acesse **supabase.com** → *Start your project* → entre com a conta Google ou GitHub.
 2. *New project*: nome `fazenda`, escolha uma **senha forte do banco** (guarde num lugar seguro), região **South America (São Paulo)**.
-3. No menu da esquerda: **SQL Editor** → *New query* → cole TODO o conteúdo do arquivo `supabase/migrations/001_mvp.sql` → **Run**. Deve aparecer *Success*.
+3. No menu da esquerda: **SQL Editor** → *New query* → cole TODO o conteúdo de cada arquivo abaixo, **um de cada vez e nesta ordem**, clicando em **Run** a cada um (deve aparecer *Success*):
+   1. `supabase/migrations/001_mvp.sql` — estrutura e regras de acesso
+   2. `supabase/migrations/002_areas_categorias_vendas.sql` — categorias por idade, áreas e vendas
+   3. `supabase/migrations/003_importacao_fazenda2.sql` — **importa as 60 áreas e as 5 vendas de 2026** (só pode rodar uma vez; se rodar de novo, ele avisa e não duplica)
 4. **Authentication → Sign In / Providers → Email**: deixe ativado. (Opcional: desligar *Confirm email* para não exigir confirmação por e-mail.)
 5. **Project Settings → API**: copie a **Project URL** e a chave **anon / publishable**.
    ⚠️ Nunca use nem compartilhe a chave **service_role / secret**.
@@ -70,7 +74,13 @@ npm run build            # gera a versão final em dist/
 Estrutura: `supabase/migrations/` (banco e regras de acesso) · `src/pages/` (telas) · `src/lib/` (conexão, formatos, tipos).
 
 ## Próximas etapas
-2. Compras, vendas e trocas (com NF e valores) · mortes/descartes · reprodução · relatórios PDF/Excel · **importação das planilhas atuais**
+2. **Relatório Mensal do Rebanho** automático · lançamento de compras, vendas e trocas · mortes/descartes · reprodução e calendário da IATF · relatórios PDF
 3. Máquinas, manutenção e diesel
 4. Estoque de insumos, serviços de pastagem e cantina
 5. Colaboradores, documentos/anexos, fotos nas tarefas, cavalos
+
+## Importação das planilhas
+O arquivo `003_importacao_fazenda2.sql` é gerado pelo script `importacao/gerar_sql.py` a partir de
+*Áreas Faz. 2 atualizada - 2025.xlsx* (aba 2025.26) e *Vendas2026F2.xlsx*. Os dados são copiados como estão;
+divergências encontradas ficam registradas no campo de observação (ex.: números repetidos 3557, 7318, 7444 e 7483,
+data da venda JBS, soma de usos da área P7).
