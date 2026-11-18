@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { PRIORIDADE, STATUS, dataBR, erroAmigavel, hojeISO } from '../lib/formato'
 import { useListas } from '../lib/dados'
+import { enfileirar, lerComCache, novoId, q as consulta, useSincronizacao } from '../lib/offline'
+import { AvisoCache } from './Pendencias'
 import { useAuth } from '../auth'
 import type { Tarefa } from '../lib/tipos'
 
@@ -17,10 +19,14 @@ export default function Tarefas() {
   const [soMinhas, setSoMinhas] = useState(!gestor)
   const [lista, setLista] = useState<Tarefa[]>([])
   const [nova, setNova] = useState<typeof VAZIA | null>(null)
-  const [erro, setErro] = useState('')
+  const [erro, setErro] = useState(''), [ok, setOk] = useState('')
+  const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
+  const { pendentes } = useSincronizacao()
   const hoje = hojeISO()
 
+  const pedido = useRef(0)
   const carregar = useCallback(() => {
+    const meu = ++pedido.current
     let q = supabase.from('tarefas').select('*').eq('arquivado', false)
     if (visao === 'hoje') q = q.eq('data', hoje)
     if (visao === 'atrasadas') q = q.lt('data', hoje).neq('status', 'concluida')
@@ -29,16 +35,23 @@ export default function Tarefas() {
     if (visao === 'pessoa') q = q.gte('data', somaDias(hoje, -1)).neq('status', 'concluida')
     if (visao === 'concluidas') q = q.eq('status', 'concluida').gte('data', somaDias(hoje, -30))
     if (soMinhas && perfil) q = q.eq('responsavel_id', perfil.id)
-    q.order('data', { ascending: visao !== 'concluidas' }).order('hora', { nullsFirst: false }).limit(500)
-      .then(r => setLista((r.data as Tarefa[]) || []))
-  }, [visao, soMinhas, perfil, hoje])
+    lerComCache(`tarefas:${visao}:${soMinhas ? 'minhas' : 'todas'}`, () => consulta<Tarefa[]>(q.order('data', { ascending: visao !== 'concluidas' }).order('hora', { nullsFirst: false }).limit(500)), [] as Tarefa[])
+      .then(r => {
+        if (meu !== pedido.current) return // chegou uma resposta mais nova; ignora esta
+        // aplica por cima as mudanças de status que ainda estão na fila do aparelho
+        const mud = new Map<string, Record<string, unknown>>()
+        pendentes.forEach(p => { if (p.op.tipo === 'update' && p.op.tabela === 'tarefas') mud.set(p.op.alvo, { ...(mud.get(p.op.alvo) || {}), ...p.op.dados }) })
+        setLista(r.dados.map(t => (mud.has(t.id) ? { ...t, ...mud.get(t.id) } as Tarefa : t))); setCache(r)
+      }, e => setErro(String(e)))
+  }, [visao, soMinhas, perfil, hoje, pendentes])
   useEffect(carregar, [carregar])
 
   async function status(t: Tarefa, s: Tarefa['status']) {
     let obs = t.obs_execucao
     if (s === 'concluida') { const o = prompt('Observação da execução (opcional):', obs || ''); if (o === null) return; obs = o || null }
-    const { error } = await supabase.from('tarefas').update({ status: s, obs_execucao: obs }).eq('id', t.id)
-    if (error) setErro(erroAmigavel(error)); else carregar()
+    setLista(l => l.map(x => (x.id === t.id ? { ...x, status: s, obs_execucao: obs } : x))) // mostra na hora
+    const enviado = await enfileirar({ tipo: 'update', tabela: 'tarefas', alvo: t.id, dados: { status: s, obs_execucao: obs } }, `Tarefa "${t.titulo}": ${STATUS[s]}`)
+    setOk(enviado ? '' : 'Mudança guardada no aparelho. Será enviada quando houver internet.'); carregar()
   }
   async function arquivar(t: Tarefa) {
     if (!confirm(`Arquivar a tarefa "${t.titulo}"?`)) return
@@ -49,9 +62,8 @@ export default function Tarefas() {
     e.preventDefault(); if (!nova) return
     const d = { ...nova, titulo: nova.titulo.trim(), hora: nova.hora || null, pasto_id: nova.pasto_id || null, responsavel_id: nova.responsavel_id || null,
       descricao: nova.descricao || null, local_texto: nova.local_texto || null, equipe: nova.equipe || null, materiais: nova.materiais || null }
-    const { error } = await supabase.from('tarefas').insert(d)
-    if (error) return setErro(erroAmigavel(error))
-    setNova(null); setErro(''); carregar()
+    const enviado = await enfileirar({ tipo: 'insert', tabela: 'tarefas', dados: { id: novoId(), ...d } }, `Nova tarefa: ${d.titulo} (${d.data.split('-').reverse().join('/')})`)
+    setNova(null); setErro(''); setOk(enviado ? 'Tarefa criada.' : 'Tarefa guardada no aparelho. Será enviada quando houver internet.'); carregar()
   }
 
   const nomeDe = (id: string | null) => pessoas.find(p => p.id === id)?.nome || pessoas.find(p => p.id === id)?.email || 'Sem responsável'
@@ -95,7 +107,8 @@ export default function Tarefas() {
           .map(([k, t]) => <button key={k} className={visao === k ? '' : 'sec'} onClick={() => setVisao(k)}>{t}</button>)}
         <label className="check"><input type="checkbox" checked={soMinhas} onChange={e => setSoMinhas(e.target.checked)} /> Só as minhas</label>
       </div>
-      {erro && <p className="erro">{erro}</p>}
+      <AvisoCache {...cache} />
+      {erro && <p className="erro">{erro}</p>}{ok && <p className="ok">{ok}</p>}
 
       {nova && <form className="cartao formulario" onSubmit={criar}>
         <h2>Nova tarefa</h2>

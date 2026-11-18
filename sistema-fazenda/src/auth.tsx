@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
+import { comLimite } from './lib/offline'
 import type { Perfil } from './lib/tipos'
 
 interface Ctx { recuperando: boolean; fimRecuperacao: () => void; sessao: Session | null; perfil: Perfil | null; carregando: boolean; gestor: boolean; admin: boolean; recarregar: () => void }
@@ -22,8 +23,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sessao) { setPerfil(null); setCarregando(false); return }
     setCarregando(true)
-    supabase.from('perfis').select('*').eq('id', sessao.user.id).maybeSingle()
-      .then(({ data }) => { setPerfil(data as Perfil | null); setCarregando(false) })
+    const chave = 'perfil:' + sessao.user.id
+    const guardado = () => { try { return JSON.parse(localStorage.getItem(chave) || 'null') } catch { return null } }
+    if (!navigator.onLine && guardado()) { setPerfil(guardado()); setCarregando(false); return }
+    comLimite(Promise.resolve(supabase.from('perfis').select('*').eq('id', sessao.user.id).maybeSingle()), 8000)
+      .catch(error => ({ data: null, error }))
+      .then(({ data, error }) => {
+        if (error) {
+          // sem internet: usa o último perfil guardado neste aparelho
+          setPerfil(guardado())
+        } else {
+          setPerfil(data as Perfil | null)
+          try { localStorage.setItem(chave, JSON.stringify(data)) } catch { /* armazenamento indisponível */ }
+        }
+        setCarregando(false)
+      })
   }, [sessao, n])
 
   const ativo = Boolean(perfil?.ativo)

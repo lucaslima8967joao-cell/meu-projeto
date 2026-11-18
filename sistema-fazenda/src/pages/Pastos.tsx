@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { TIPOS_AREA, baixarCSV, erroAmigavel, hojeISO, num } from '../lib/formato'
 import { buscarTodos, useListas } from '../lib/dados'
+import { enfileirar, lerComCache, novoId } from '../lib/offline'
+import { AvisoCache } from './Pendencias'
 import { useAuth } from '../auth'
 import type { Pasto } from '../lib/tipos'
 
@@ -20,8 +22,10 @@ export default function Pastos() {
   const [erro, setErro] = useState(''), [ok, setOk] = useState('')
 
   const [n, setN] = useState(0)
+  const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
   useEffect(() => {
-    buscarTodos<Pasto>((de, ate) => supabase.from('v_pastos').select('*').eq('arquivado', false).order('codigo').range(de, ate)).then(setPastos, () => setPastos([]))
+    lerComCache('v_pastos', () => buscarTodos<Pasto>((de, ate) => supabase.from('v_pastos').select('*').eq('arquivado', false).order('codigo').range(de, ate)), [] as Pasto[])
+      .then(r => { setPastos(r.dados); setCache(r) }, () => setPastos([]))
   }, [n])
   useEffect(() => { if (!fz && fazendas.length) setFz(fazendas[0].id) }, [fazendas, fz])
 
@@ -54,8 +58,11 @@ export default function Pastos() {
   async function moverLote(e: React.FormEvent) {
     e.preventDefault()
     const l = lotes.find(x => x.id === movLote.lote_id)
-    const { error } = await supabase.from('movimentacoes').insert({ lote_id: movLote.lote_id, pasto_origem_id: l?.pasto_id || null, pasto_destino_id: movLote.destino, data: movLote.data, motivo: movLote.motivo || null })
-    msg(error, 'Lote movido. Todos os animais ativos do lote foram para o novo pasto.'); if (!error) setMovLote({ lote_id: '', destino: '', data: hojeISO(), motivo: '' })
+    const destino = pastos.find(p => p.id === movLote.destino)?.codigo
+    const enviado = await enfileirar({ tipo: 'insert', tabela: 'movimentacoes', dados: { id: novoId(), lote_id: movLote.lote_id, pasto_origem_id: l?.pasto_id || null, pasto_destino_id: movLote.destino, data: movLote.data, motivo: movLote.motivo || null, lancado_em: new Date().toISOString() } },
+      `Lote ${l?.nome} mudou para o pasto ${destino}`)
+    msg(null, enviado ? 'Lote movido. Todos os animais ativos do lote foram para o novo pasto.' : 'Movimentação do lote guardada no aparelho. Será enviada quando houver internet.')
+    setMovLote({ lote_id: '', destino: '', data: hojeISO(), motivo: '' })
   }
 
   const todasAreas = pastos.filter(p => p.fazenda_id === fz), ls = lotes.filter(l => l.fazenda_id === fz)
@@ -77,6 +84,7 @@ export default function Pastos() {
           {gestor && fz && <button onClick={() => setPf({ ...PASTO_VAZIO, fazenda_id: fz })}>+ Pasto</button>}
         </div>
       </div>
+      <AvisoCache {...cache} />
       {erro && <p className="erro">{erro}</p>}{ok && <p className="ok">{ok}</p>}
       {!fazendas.length && <p className="vazio">Nenhuma fazenda cadastrada. {gestor ? 'Comece clicando em “+ Fazenda”.' : 'Peça ao administrador para cadastrar.'}</p>}
 

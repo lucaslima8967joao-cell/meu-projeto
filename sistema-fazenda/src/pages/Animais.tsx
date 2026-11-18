@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { SEXO, SITUACAO, baixarCSV, dataBR, idade, kg } from '../lib/formato'
 import { buscarTodos, useListas } from '../lib/dados'
+import { lerComCache } from '../lib/offline'
+import { AvisoCache } from './Pendencias'
 import { useAuth } from '../auth'
 import type { Animal } from '../lib/tipos'
 
@@ -17,12 +19,13 @@ export default function Animais() {
   const { gestor } = useAuth()
   const { pastos, lotes } = useListas()
   const [todos, setTodos] = useState<Animal[] | null>(null)
+  const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
   const [busca, setBusca] = useState('')
   const [f, setF] = useState({ sexo: '', categoria: '', raca: '', lote: '', pasto: '', situacao: 'ativo', idadeMin: '', idadeMax: '' })
 
   useEffect(() => {
-    buscarTodos<Animal>((de, ate) => supabase.from('v_animais').select('*').eq('arquivado', false).order('controle').order('id').range(de, ate))
-      .then(setTodos, () => setTodos([]))
+    lerComCache('v_animais', () => buscarTodos<Animal>((de, ate) => supabase.from('v_animais').select('*').eq('arquivado', false).order('controle').order('id').range(de, ate)), [] as Animal[])
+      .then(r => { setTodos(r.dados); setCache(r) }, () => setTodos([]))
   }, [])
 
   const categorias = useMemo(() => [...new Set((todos || []).map(a => a.categoria_atual).filter(Boolean))].sort() as string[], [todos])
@@ -49,6 +52,7 @@ export default function Animais() {
           {gestor && <Link className="botao" to="/animais/novo">+ Novo animal</Link>}
         </div>
       </div>
+      <AvisoCache {...cache} />
       <input className="busca" placeholder="Buscar por controle, chip, brinco ou nome…" value={busca} onChange={e => setBusca(e.target.value)} autoFocus />
       <div className="filtros">
         <select value={f.situacao} onChange={set('situacao')}><option value="">Todas situações</option>{Object.entries(SITUACAO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>

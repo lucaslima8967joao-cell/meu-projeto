@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { SEXO, SITUACAO, dataBR, erroAmigavel, hojeISO, idade, kg } from '../lib/formato'
-import { useListas } from '../lib/dados'
+import { buscarTodos, useListas } from '../lib/dados'
+import { enfileirar, lerComCache, novoId, q, useSincronizacao } from '../lib/offline'
+import { AvisoCache } from './Pendencias'
 import { useAuth } from '../auth'
 import type { Animal, Pesagem } from '../lib/tipos'
 
@@ -19,13 +21,21 @@ export default function AnimalDetalhe() {
   const [nova, setNova] = useState({ data: hojeISO(), peso: '', obs: '' })
   const [mov, setMov] = useState({ data: hojeISO(), destino: '', motivo: '' })
   const [erro, setErro] = useState(''), [ok, setOk] = useState('')
+  const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
+  const { pendentes } = useSincronizacao()
+  const meusPendentes = pendentes.filter(p => p.animal_id === id)
 
   const carregar = useCallback(() => {
-    supabase.from('v_animais').select('*').eq('id', id!).maybeSingle().then(r => setA(r.data as Animal))
-    supabase.from('pesagens').select('*').eq('animal_id', id!).order('data', { ascending: false }).then(r => setPes((r.data as Pesagem[]) || []))
-    supabase.from('movimentacoes').select('id, data, motivo, origem:pasto_origem_id(codigo), destino:pasto_destino_id(codigo)')
-      .eq('animal_id', id!).order('data', { ascending: false }).then(r => setMovs((r.data as unknown as Mov[]) || []))
-    supabase.from('v_animais').select('*').eq('mae_id', id!).order('nascimento', { ascending: false }).then(r => setFilhos((r.data as Animal[]) || []))
+    // a ficha usa a lista geral guardada no aparelho quando estiver sem internet
+    lerComCache('v_animais', () => buscarTodos<Animal>((de, ate) => supabase.from('v_animais').select('*').eq('arquivado', false).order('controle').order('id').range(de, ate)), [] as Animal[])
+      .then(r => {
+        setCache(r)
+        setA(r.dados.find(x => x.id === id) || null)
+        setFilhos(r.dados.filter(x => x.mae_id === id).sort((x, y) => (y.nascimento || '').localeCompare(x.nascimento || '')))
+      })
+    lerComCache('pesagens:' + id, () => q<Pesagem[]>(supabase.from('pesagens').select('*').eq('animal_id', id!).order('data', { ascending: false })), []).then(r => setPes(r.dados))
+    lerComCache('movs:' + id, () => q<Mov[]>(supabase.from('movimentacoes').select('id, data, motivo, origem:pasto_origem_id(codigo), destino:pasto_destino_id(codigo)')
+      .eq('animal_id', id!).order('data', { ascending: false })), []).then(r => setMovs(r.dados))
   }, [id])
   useEffect(carregar, [carregar])
 
@@ -37,28 +47,31 @@ export default function AnimalDetalhe() {
     const ultimo = pes[0]?.peso_kg
     if (ultimo && Math.abs(peso - ultimo) / ultimo > 0.4 &&
       !confirm(`O peso informado (${peso} kg) é muito diferente da última pesagem (${ultimo} kg). Confirma?`)) return
-    const { error } = await supabase.from('pesagens').insert({ animal_id: id, data: nova.data, peso_kg: peso, obs: nova.obs || null })
-    if (error) return setErro(erroAmigavel(error))
-    setNova({ data: hojeISO(), peso: '', obs: '' }); setOk('Pesagem registrada.'); carregar()
+    const enviado = await enfileirar({ tipo: 'insert', tabela: 'pesagens', dados: { id: novoId(), animal_id: id, data: nova.data, peso_kg: peso, obs: nova.obs || null, lancado_em: new Date().toISOString() } },
+      `Pesagem de ${a?.controle || a?.chip || 'animal'}: ${peso} kg em ${nova.data.split('-').reverse().join('/')}`, id)
+    setNova({ data: hojeISO(), peso: '', obs: '' })
+    setOk(enviado ? 'Pesagem registrada.' : 'Pesagem guardada no aparelho. Será enviada quando houver internet.'); carregar()
   }
 
   async function mover(e: React.FormEvent) {
     e.preventDefault(); setErro(''); setOk('')
     if (!mov.destino) return setErro('Escolha o pasto de destino.')
     if (mov.destino === a?.pasto_id) return setErro('O animal já está nesse pasto.')
-    const { error } = await supabase.from('movimentacoes').insert({ animal_id: id, pasto_origem_id: a?.pasto_id, pasto_destino_id: mov.destino, data: mov.data, motivo: mov.motivo || null })
-    if (error) return setErro(erroAmigavel(error))
-    setMov({ data: hojeISO(), destino: '', motivo: '' }); setOk('Movimentação registrada.'); carregar()
+    const destino = pastos.find(p => p.id === mov.destino)?.codigo
+    const enviado = await enfileirar({ tipo: 'insert', tabela: 'movimentacoes', dados: { id: novoId(), animal_id: id, pasto_origem_id: a?.pasto_id, pasto_destino_id: mov.destino, data: mov.data, motivo: mov.motivo || null, lancado_em: new Date().toISOString() } },
+      `${a?.controle || a?.chip || 'Animal'} mudou para o pasto ${destino}`, id)
+    setMov({ data: hojeISO(), destino: '', motivo: '' })
+    setOk(enviado ? 'Movimentação registrada.' : 'Movimentação guardada no aparelho. Será enviada quando houver internet.'); carregar()
   }
 
   async function arquivar() {
     if (!confirm('Arquivar este animal? Ele sai das listas, mas todo o histórico continua guardado.')) return
     const { error } = await supabase.from('animais').update({ arquivado: true }).eq('id', id!)
-    if (error) return setErro(erroAmigavel(error))
+    if (error) return setErro(erroAmigavel(error) + ' (Arquivar precisa de internet.)')
     location.hash = '#/animais'
   }
 
-  if (!a) return <p>Carregando…</p>
+  if (!a) return <p>{cache.doCache ? 'Este animal não está guardado no aparelho. Abra com internet uma vez para guardar.' : 'Carregando…'}</p>
   const gmd = pes.length >= 2 ? (pes[0].peso_kg - pes[pes.length - 1].peso_kg) /
     Math.max(1, (new Date(pes[0].data).getTime() - new Date(pes[pes.length - 1].data).getTime()) / 864e5) : null
   const max = Math.max(...pes.map(p => p.peso_kg), 1)
@@ -73,7 +86,9 @@ export default function AnimalDetalhe() {
           {gestor && <button className="perigo" onClick={arquivar}>Arquivar</button>}
         </div>
       </div>
+      <AvisoCache {...cache} />
       {erro && <p className="erro">{erro}</p>}{ok && <p className="ok">{ok}</p>}
+      {meusPendentes.length > 0 && <div className="aviso">Aguardando envio: <ul>{meusPendentes.map(p => <li key={p.id}>{p.descricao}{p.erro && ' — ⚠️ não aceito, veja em Lançamentos aguardando envio'}</li>)}</ul></div>}
       <div className="duas">
         <section className="cartao">
           <h2>Identificação</h2>

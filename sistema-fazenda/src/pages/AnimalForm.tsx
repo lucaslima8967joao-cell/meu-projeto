@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { CATEGORIAS, RACAS, SITUACAO, erroAmigavel, hojeISO } from '../lib/formato'
+import { CATEGORIAS, RACAS, SITUACAO, hojeISO } from '../lib/formato'
 import { useListas } from '../lib/dados'
+import { enfileirar, lerComCache, novoId } from '../lib/offline'
+import type { Animal } from '../lib/tipos'
 import { useAuth } from '../auth'
 
 const VAZIO = { fazenda_id: '', controle: '', chip: '', brinco: '', nome: '', sexo: '', raca: 'NEL', nascimento: '', categoria: '',
@@ -18,9 +20,10 @@ export default function AnimalForm() {
 
   useEffect(() => {
     if (!id) return
-    supabase.from('animais').select('*').eq('id', id).single().then(({ data }) => {
-      if (!data) return
-      const d = data as Record<string, unknown>
+    lerComCache<Animal[]>('v_animais', () => Promise.reject(new Error('fetch')), []).then(async r => {
+      const { data } = await supabase.from('animais').select('*').eq('id', id).maybeSingle()
+      const d = (data || r.dados.find(x => x.id === id)) as Record<string, unknown> | undefined
+      if (!d) return
       setV({ ...VAZIO, ...Object.fromEntries(Object.entries(d).map(([k, x]) => [k, x ?? ''])), matriz: Boolean(d.matriz), touro: Boolean(d.touro) } as typeof VAZIO)
     })
   }, [id])
@@ -40,12 +43,20 @@ export default function AnimalForm() {
       sexo: v.sexo, raca: limpo(v.raca), nascimento: v.nascimento || null, categoria: limpo(v.categoria),
       lote_id: v.lote_id || null, pasto_id: v.pasto_id || null, pai_descricao: limpo(v.pai_descricao), situacao: v.situacao, obs: limpo(v.obs), matriz: v.sexo === 'F' && v.matriz, touro: v.sexo === 'M' && v.touro,
     }
-    const r = id ? await supabase.from('animais').update(dados).eq('id', id).select('id').single()
-                 : await supabase.from('animais').insert(dados).select('id').single()
-    if (r.error) { setSalvando(false); return setErro(erroAmigavel(r.error)) }
+    // confere duplicidade com a lista guardada no aparelho (o banco confere de novo no envio)
+    const guardados = (await lerComCache<Animal[]>('v_animais', () => Promise.reject(new Error('fetch')), [])).dados
+    const igual = (x: string | null, y: string | null) => x && y && x.trim().toLowerCase() === y.trim().toLowerCase()
+    const dup = guardados.find(a => a.id !== id && a.situacao === 'ativo' && (igual(a.chip, dados.chip) || igual(a.controle, dados.controle) || igual(a.brinco, dados.brinco)))
+    if (dup) { setSalvando(false); return setErro(`Já existe um animal ativo com este número (controle ${dup.controle || '—'}, chip ${dup.chip || '—'}).`) }
+    const nome = dados.controle || dados.chip || dados.brinco
+    const novo = id || novoId()
+    const enviado = id
+      ? await enfileirar({ tipo: 'update', tabela: 'animais', alvo: id, dados }, `Alteração no cadastro do animal ${nome}`, id)
+      : await enfileirar({ tipo: 'insert', tabela: 'animais', dados: { id: novo, ...dados } }, `Cadastro do animal ${nome}`, novo)
     const peso = Number(v.peso_inicial.replace(',', '.'))
-    if (!id && peso > 0) await supabase.from('pesagens').insert({ animal_id: r.data.id, peso_kg: peso, data: hojeISO(), obs: 'Peso no cadastro' })
-    nav(`/animais/${r.data.id}`)
+    if (!id && peso > 0) await enfileirar({ tipo: 'insert', tabela: 'pesagens', dados: { id: novoId(), animal_id: novo, peso_kg: peso, data: hojeISO(), obs: 'Peso no cadastro', lancado_em: new Date().toISOString() } }, `Pesagem de ${nome}: ${peso} kg (cadastro)`, novo)
+    setSalvando(false)
+    nav(enviado ? `/animais/${novo}` : '/pendencias')
   }
 
   return (

@@ -66,3 +66,10 @@ tr.pendente { background: var(--alerta-claro); }
 .grupo h2 { margin-top: 1rem; } .dicas { color: var(--suave); }
 .aviso { color: var(--alerta); background: var(--alerta-claro); padding: .6rem; border-radius: 8px; }
 tfoot th { border-top: 2px solid var(--borda); color: var(--texto); }
+.sinc { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .5rem 16px; font-size: .95rem; }
+.sinc a { color: inherit; font-weight: 600; }
+.sinc-off { background: var(--alerta-claro); color: var(--alerta); }
+.sinc-envio { background: var(--verde-claro); color: var(--verde); }
+.sinc-erro { background: var(--perigo-claro); color: var(--perigo); }
+.dados-salvos { color: var(--alerta); font-size: .9rem; }
+.pend { color: var(--alerta); font-style: italic; }

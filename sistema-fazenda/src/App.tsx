@@ -12,6 +12,7 @@ import Tarefas from './pages/Tarefas'
 import Usuarios from './pages/Usuarios'
 import NovaSenha from './pages/NovaSenha'
 import { Vendas, VendaDetalhe } from './pages/Vendas'
+import Pendencias, { StatusSincronizacao } from './pages/Pendencias'
 
 export default function App() {
   const { sessao, perfil, carregando, admin, gestor, recuperando } = useAuth()
@@ -24,7 +25,7 @@ export default function App() {
   )
   if (!sessao) return <Login />
   if (recuperando) return <NovaSenha />
-  if (carregando) return <div className="centro">Carregando…</div>
+  if (carregando) return <div className="centro">Entrando…</div>
   if (!perfil?.ativo) return (
     <div className="centro"><div className="cartao">
       <h1>Aguardando liberação</h1>
@@ -40,6 +41,7 @@ export default function App() {
         <span className="quem">{perfil.nome || perfil.email} · {perfil.papel}</span>
         <button className="sec mini" onClick={() => supabase.auth.signOut()}>Sair</button>
       </header>
+      <StatusSincronizacao />
       <nav className="menu">
         <NavLink to="/" end>Painel</NavLink>
         <NavLink to="/animais">Animais</NavLink>
@@ -62,6 +64,7 @@ export default function App() {
           <Route path="/vendas/:id" element={gestor ? <VendaDetalhe /> : <Navigate to="/" />} />
           <Route path="/tarefas" element={<Tarefas />} />
           <Route path="/usuarios" element={admin ? <Usuarios /> : <Navigate to="/" />} />
+          <Route path="/pendencias" element={<Pendencias />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { lerComCache, q } from './offline'
 import type { Fazenda, Lote, Pasto, Perfil } from './tipos'
 
 /** Carrega listas usadas em vários formulários (fazendas, pastos, lotes, pessoas). */
@@ -10,10 +11,12 @@ export function useListas() {
   const [pessoas, setPe] = useState<Perfil[]>([])
   const [n, setN] = useState(0)
   useEffect(() => {
-    supabase.from('fazendas').select('*').eq('arquivado', false).order('nome').then(r => setF((r.data as Fazenda[]) || []))
-    supabase.from('pastos').select('*').eq('arquivado', false).order('codigo').then(r => setP((r.data as Pasto[]) || []))
-    supabase.from('lotes').select('*').eq('arquivado', false).order('nome').then(r => setL((r.data as Lote[]) || []))
-    supabase.from('perfis').select('*').eq('ativo', true).order('nome').then(r => setPe((r.data as Perfil[]) || []))
+    const ler = <T,>(chave: string, consulta: PromiseLike<{ data: unknown; error: unknown }>, set: (v: T[]) => void) =>
+      lerComCache<T[]>(chave, () => q<T[]>(consulta), []).then(r => set(r.dados), () => set([]))
+    ler<Fazenda>('fazendas', supabase.from('fazendas').select('*').eq('arquivado', false).order('nome'), setF)
+    ler<Pasto>('pastos', supabase.from('pastos').select('*').eq('arquivado', false).order('codigo'), setP)
+    ler<Lote>('lotes', supabase.from('lotes').select('*').eq('arquivado', false).order('nome'), setL)
+    ler<Perfil>('pessoas', supabase.from('perfis').select('id, nome, email, papel, ativo').eq('ativo', true).order('nome'), setPe)
   }, [n])
   return { fazendas, pastos, lotes, pessoas, recarregar: () => setN(x => x + 1) }
 }

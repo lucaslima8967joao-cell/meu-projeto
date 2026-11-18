@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { RACAS, SEXO, dataBR, erroAmigavel, hojeISO, kg } from '../lib/formato'
+import { RACAS, SEXO, dataBR, hojeISO, kg } from '../lib/formato'
 import { buscarTodos, useListas } from '../lib/dados'
+import { enfileirar, lerComCache, novoId, q as consulta } from '../lib/offline'
 import type { Animal } from '../lib/tipos'
 
 interface Nasc { id: string; data: string; peso_nascer_kg: number | null; bezerro: Animal | null; mae: { controle: string | null; chip: string | null } | null }
@@ -16,12 +17,13 @@ export default function Nascimento() {
   const [buscaMae, setBuscaMae] = useState('')
   const [erro, setErro] = useState(''), [ok, setOk] = useState(''), [salvando, setSalvando] = useState(false)
 
-  const carregar = () => supabase.from('nascimentos')
+  const carregar = () => lerComCache('nascimentos:recentes', () => consulta<Nasc[]>(supabase.from('nascimentos')
     .select('id, data, peso_nascer_kg, bezerro:bezerro_id(id, controle, chip, brinco, sexo), mae:mae_id(controle, chip)')
-    .order('data', { ascending: false }).limit(20).then(r => setRecentes((r.data as unknown as Nasc[]) || []))
+    .order('data', { ascending: false }).limit(20)), []).then(r => setRecentes(r.dados))
 
   useEffect(() => {
-    buscarTodos<Animal>((de, ate) => supabase.from('animais').select('id, controle, chip, brinco, fazenda_id, raca').eq('sexo', 'F').eq('situacao', 'ativo').eq('arquivado', false).order('controle').range(de, ate)).then(setMaes)
+    lerComCache('v_animais', () => buscarTodos<Animal>((de, ate) => supabase.from('v_animais').select('*').eq('arquivado', false).order('controle').order('id').range(de, ate)), [] as Animal[])
+      .then(r => setMaes(r.dados.filter(a => a.sexo === 'F' && a.situacao === 'ativo')))
     carregar()
   }, [])
   useEffect(() => {
@@ -43,15 +45,17 @@ export default function Nascimento() {
     if (!v.controle.trim() && !v.chip.trim() && !v.brinco.trim() && !v.mae_id)
       return setErro('Sem número no bezerro, informe pelo menos a mãe para identificá-lo.')
     setSalvando(true)
-    const { data, error } = await supabase.rpc('registrar_nascimento', {
+    const bezerro = novoId()
+    const mae = maes.find(m => m.id === v.mae_id)
+    const enviado = await enfileirar({ tipo: 'rpc', funcao: 'registrar_nascimento', args: {
       p_fazenda_id: v.fazenda_id, p_mae_id: v.mae_id || null, p_pai_id: null, p_pai_descricao: v.pai,
       p_data: v.data, p_sexo: v.sexo, p_raca: v.raca, p_peso: peso,
-      p_controle: v.controle, p_chip: v.chip, p_brinco: v.brinco, p_obs: v.obs || null,
-    })
+      p_controle: v.controle, p_chip: v.chip, p_brinco: v.brinco, p_obs: v.obs || null, p_id: bezerro,
+    } }, `Nascimento: ${v.sexo === 'M' ? 'macho' : 'fêmea'} em ${v.data.split('-').reverse().join('/')}${mae ? `, mãe ${mae.controle || mae.chip}` : ''}`, bezerro)
     setSalvando(false)
-    if (error) return setErro(erroAmigavel(error))
-    setOk('Nascimento registrado.'); setV({ ...v, sexo: '', peso: '', controle: '', chip: '', brinco: '', obs: '', mae_id: '' }); setBuscaMae('')
-    carregar(); void data
+    setOk(enviado ? 'Nascimento registrado.' : 'Nascimento guardado no aparelho. Será enviado quando houver internet.')
+    setV({ ...v, sexo: '', peso: '', controle: '', chip: '', brinco: '', obs: '', mae_id: '' }); setBuscaMae('')
+    carregar()
   }
 
   return (

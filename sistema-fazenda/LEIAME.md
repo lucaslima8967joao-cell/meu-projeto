@@ -14,6 +14,7 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 | **Áreas e lotes** | Áreas da Fazenda 2 com uso dividido (soja, reflorestamento, sem definição, pasto boa/média/ruim/degradada), lotação chuva/seca e capacidade em UA · lotes · mover animal ou **lote inteiro** de pasto com histórico · ocupação atual de cada pasto |
 | **Tarefas** | Hoje, atrasadas, próximas, semana, por colaborador e concluídas · prioridade, horário, pasto, responsável, equipe, materiais · iniciar/concluir com observação |
 | **Painel** | Animais ativos, nascimentos (30 dias), tarefas do dia e atrasadas, rebanho por categoria, pesagens recentes |
+| **Sem internet** | App abre e funciona sem sinal; lançamentos ficam na fila e são enviados sozinhos quando a internet voltar, sem duplicar |
 | **Segurança** | Regras de acesso no próprio banco · registro de **quem alterou o quê e quando** (tabela `auditoria`) |
 
 ## Instalação (uma vez só, ~20 minutos)
@@ -25,6 +26,7 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
    1. `supabase/migrations/001_mvp.sql` — estrutura e regras de acesso
    2. `supabase/migrations/002_areas_categorias_vendas.sql` — categorias por idade, áreas e vendas
    3. `supabase/migrations/003_importacao_fazenda2.sql` — **importa as 60 áreas e as 5 vendas de 2026** (só pode rodar uma vez; se rodar de novo, ele avisa e não duplica)
+   4. `supabase/migrations/004_offline.sql` — permite lançar sem internet sem duplicar
 4. **Authentication → Sign In / Providers → Email**: deixe ativado. (Opcional: desligar *Confirm email* para não exigir confirmação por e-mail.)
 5. **Project Settings → API**: copie a **Project URL** e a chave **anon / publishable**.
    ⚠️ Nunca use nem compartilhe a chave **service_role / secret**.
@@ -45,6 +47,18 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 ## Como acessar
 - **Computador**: abra o endereço no Chrome, Edge ou Firefox. No Windows 7 use o Chrome 109 (último disponível para ele) ou Firefox ESR.
 - **Celular**: abra o endereço no Chrome (Android) ou Safari (iPhone) → menu → **Adicionar à tela inicial**. Ele vira um ícone como um app.
+
+## Uso SEM INTERNET (campo e curral)
+1. **Na primeira vez, entre com internet** e abra as telas que vai usar (Animais, Áreas, Tarefas, Nascimento). O app guarda uma cópia no aparelho.
+2. No campo, sem sinal, o app abre normalmente e mostra no topo **📵 Sem internet**.
+3. Funcionam sem internet: **pesagem, nascimento, troca de pasto (animal ou lote), cadastro/edição de animal, criar e concluir tarefa**.
+   Cada lançamento fica numa fila no aparelho ("3 lançamentos aguardando envio").
+4. Quando o sinal voltar (sede, estrada, Wi-Fi), **o envio é automático**. Também dá para tocar em **Enviar agora**.
+5. Se algum lançamento for recusado (ex.: chip que já existe em outro animal), ele aparece em vermelho na tela
+   *Lançamentos aguardando envio* com o motivo, para corrigir ou descartar.
+6. Precisam de internet: gerenciar usuários, cadastrar/editar áreas e lotes, arquivar e ver vendas.
+
+⚠️ Não limpe os dados do navegador nem desinstale o app com lançamentos pendentes: eles só existem no aparelho até serem enviados.
 
 ## Criar usuários
 1. A pessoa abre o endereço e clica em **Criar conta**.
