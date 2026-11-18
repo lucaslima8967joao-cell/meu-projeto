@@ -19,5 +19,7 @@ export default defineConfig({
     }),
   ],
   base: './',
+  // aceita as variáveis criadas automaticamente pela integração Supabase do Vercel (NEXT_PUBLIC_*)
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   build: { target: ['chrome109', 'firefox115', 'safari15', 'edge109'] },
 })
