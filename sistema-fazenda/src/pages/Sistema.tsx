@@ -4,10 +4,10 @@ import { buscarTodos } from '../lib/dados'
 
 const TABELAS = ['fazendas', 'pastos', 'lotes', 'animais', 'pesagens', 'nascimentos', 'movimentacoes', 'reproducao', 'tarefas', 'vendas', 'venda_itens',
   'rebanho_mensal', 'ocorrencias', 'insumos', 'insumo_movimentos', 'formulas', 'formula_itens', 'plano_nutricional', 'servicos', 'servico_itens',
-  'pedidos_compra', 'pedido_itens', 'maquinas', 'manutencoes', 'colaboradores', 'perfis']
+  'pedidos_compra', 'pedido_itens', 'maquinas', 'manutencoes', 'colaboradores', 'cantina_produtos', 'cantina_movimentos', 'cantina_fechamentos', 'perfis']
 const NOMES: Record<string, string> = { animais: 'Animal', pesagens: 'Pesagem', nascimentos: 'Nascimento', movimentacoes: 'Troca de pasto', reproducao: 'Reprodução', tarefas: 'Tarefa',
   vendas: 'Venda', venda_itens: 'Animal da venda', pastos: 'Área', lotes: 'Lote', rebanho_mensal: 'Relatório mensal', ocorrencias: 'Morte/baixa', insumos: 'Produto',
-  insumo_movimentos: 'Movimento de estoque', servicos: 'Serviço', maquinas: 'Máquina', manutencoes: 'Manutenção', colaboradores: 'Colaborador', perfis: 'Usuário' }
+  insumo_movimentos: 'Movimento de estoque', servicos: 'Serviço', maquinas: 'Máquina', manutencoes: 'Manutenção', colaboradores: 'Colaborador', cantina_produtos: 'Produto da cantina', cantina_movimentos: 'Venda/estoque da cantina', cantina_fechamentos: 'Fechamento da cantina', perfis: 'Usuário' }
 const ACAO: Record<string, string> = { INSERT: 'criou', UPDATE: 'alterou', DELETE: 'apagou' }
 interface Aud { id: number; tabela: string; acao: string; em: string; usuario_id: string | null; antes: Record<string, unknown> | null; depois: Record<string, unknown> | null }
 

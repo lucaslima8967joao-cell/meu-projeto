@@ -62,6 +62,7 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 | **Lançar venda** no formato da planilha VENDA (cálculo de @: carcaça ÷ 15 ou peso vivo ÷ 30), colar lista do Excel, aviso de número repetido; o animal cadastrado vira "vendido" | Vendas → + Nova venda |
 | **Busca geral** (animal, chip, pasto, máquina, produto, comprador, tarefa) | 🔍 no topo |
 | **Imprimir / salvar PDF** de qualquer tela | 🖨️ PDF no topo |
+| **Cantina** (mercadinho dos funcionários): produtos com preço/custo/estoque, venda por funcionário (desconto em folha, dinheiro, Pix) também sem internet, contas do mês, fechamento para desconto em folha; cada funcionário vê só a própria conta | Cantina |
 | **Cópia de segurança** (arquivo com todos os dados) e **histórico de alterações** (quem, quando, o quê) | Cópia e histórico (só administrador) |
 
 ## Uso SEM INTERNET (campo e curral)

@@ -51,6 +51,9 @@ function traduzir(msg: string) {
 
 /** Aviso exibido quando a tela está mostrando a cópia guardada no aparelho. */
 export function AvisoCache({ doCache, em }: { doCache: boolean; em?: string }) {
+  const { online, pendentes } = useSincronizacao()
   if (!doCache) return null
-  return <p className="dados-salvos">📵 Sem internet — mostrando dados guardados {em ? `em ${new Date(em).toLocaleString('pt-BR')}` : 'no aparelho'}.</p>
+  const quando = em ? `de ${new Date(em).toLocaleString('pt-BR')}` : 'guardados no aparelho'
+  if (online && !pendentes.length) return <p className="dados-salvos">🔄 A internet voltou. Mostrando dados {quando}. <button className="mini" onClick={() => location.reload()}>Atualizar agora</button></p>
+  return <p className="dados-salvos">📵 Sem internet — mostrando dados {quando}.</p>
 }

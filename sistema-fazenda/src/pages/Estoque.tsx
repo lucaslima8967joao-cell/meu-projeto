@@ -12,7 +12,7 @@ interface Formula { id: string; nome: string; formula_itens: { percentual: numbe
 interface Plano { id: string; ano: number; mes: number; categoria: string; lote: string | null; n_animais: number | null; suplemento_texto: string | null; consumo_kg_cab_dia: number | null; dias: number | null; previsto_kg: number | null }
 interface Pedido { id: string; data: string; titulo: string; status: string; obs: string | null; pedido_itens: { id: string; produto: string; quantidade: number | null; unidade: string | null; valor_unitario: number | null; quantidade_realizada: number | null; valor_total: number | null }[] }
 
-const CATS = ['Nutrição', 'Adubo/Corretivo', 'Defensivo', 'Semente', 'Medicamento', 'Vacina', 'Combustível', 'Cerca', 'Peça', 'Cantina', 'Outro']
+const CATS = ['Nutrição', 'Adubo/Corretivo', 'Defensivo', 'Semente', 'Medicamento', 'Vacina', 'Combustível', 'Cerca', 'Peça', 'Outro']
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 export default function Estoque() {

@@ -15,6 +15,7 @@ import { Vendas, VendaDetalhe } from './pages/Vendas'
 import VendaNova from './pages/VendaNova'
 import Busca from './pages/Busca'
 import Sistema from './pages/Sistema'
+import Cantina from './pages/Cantina'
 import Pendencias, { StatusSincronizacao } from './pages/Pendencias'
 import Rebanho from './pages/Rebanho'
 import Servicos from './pages/Servicos'
@@ -66,6 +67,7 @@ export default function App() {
         <NavLink to="/servicos">Serviços</NavLink>
         <NavLink to="/estoque">Estoque</NavLink>
         <NavLink to="/maquinas">Máquinas</NavLink>
+        <NavLink to="/cantina">Cantina</NavLink>
         {gestor && <NavLink to="/colaboradores">Colaboradores</NavLink>}
         {admin && <NavLink to="/usuarios">Usuários</NavLink>}
         {admin && <NavLink to="/sistema">Cópia e histórico</NavLink>}
@@ -89,6 +91,7 @@ export default function App() {
           <Route path="/estoque" element={<Estoque />} />
           <Route path="/maquinas" element={<Maquinas />} />
           <Route path="/colaboradores" element={gestor ? <Colaboradores /> : <Navigate to="/" />} />
+          <Route path="/cantina" element={<Cantina />} />
           <Route path="/busca" element={<Busca />} />
           <Route path="/sistema" element={admin ? <Sistema /> : <Navigate to="/" />} />
           <Route path="/pendencias" element={<Pendencias />} />
