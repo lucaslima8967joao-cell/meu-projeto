@@ -54,6 +54,16 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 | **Máquinas** | Cadastro, horímetro/km, revisão a cada X h/km com aviso de vencida, manutenções e abastecimentos (diesel sai do estoque) |
 | **Colaboradores** | Cadastro (só administrador/gerente) |
 
+## Etapa 3
+| Recurso | Onde |
+|---|---|
+| **Reprodução e sanidade por animal** (inseminação, cobertura, diagnóstico prenhe/vazia, parto, vacinação, tratamento) e **intervalo entre partos** | Ficha do animal |
+| **Cavalos** (espécie Equino, categoria, uso) | Animais → filtro "Equinos" / + Novo animal |
+| **Lançar venda** no formato da planilha VENDA (cálculo de @: carcaça ÷ 15 ou peso vivo ÷ 30), colar lista do Excel, aviso de número repetido; o animal cadastrado vira "vendido" | Vendas → + Nova venda |
+| **Busca geral** (animal, chip, pasto, máquina, produto, comprador, tarefa) | 🔍 no topo |
+| **Imprimir / salvar PDF** de qualquer tela | 🖨️ PDF no topo |
+| **Cópia de segurança** (arquivo com todos os dados) e **histórico de alterações** (quem, quando, o quê) | Cópia e histórico (só administrador) |
+
 ## Uso SEM INTERNET (campo e curral)
 1. **Na primeira vez, entre com internet** e abra as telas que vai usar (Animais, Áreas, Tarefas, Nascimento). O app guarda uma cópia no aparelho.
 2. No campo, sem sinal, o app abre normalmente e mostra no topo **📵 Sem internet**.

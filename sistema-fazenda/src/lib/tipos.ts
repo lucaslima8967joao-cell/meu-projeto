@@ -16,6 +16,8 @@ export interface Animal {
   lote_id: string | null; pasto_id: string | null; mae_id: string | null; pai_id: string | null
   pai_descricao: string | null; situacao: string; obs: string | null; arquivado: boolean
   matriz: boolean; touro: boolean; categoria_atual?: string | null
+  especie: 'Bovino' | 'Equino'; uso: string | null
+  ultimo_evento_repro?: string | null; ultimo_evento_tipo?: string | null; ultimo_diagnostico?: string | null
   fazenda_nome?: string; lote_nome?: string | null; pasto_codigo?: string | null; mae_controle?: string | null
   ultimo_peso_kg?: number | null; ultima_pesagem?: string | null; idade_meses?: number | null
 }

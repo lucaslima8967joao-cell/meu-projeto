@@ -51,6 +51,7 @@ export const STATUS: Record<string, string> = { pendente: 'Pendente', andamento:
 // a lista abaixo só é usada quando o animal não tem data de nascimento.
 export const CATEGORIAS = ['Bezerra 0-4 m', 'Bezerra 5-12 m', 'Novilha 13-24 m', 'Novilha 25-36 m', 'Vaca acima de 36 m',
   'Bezerro 0-4 m', 'Bezerro 5-12 m', 'Garrote 13-24 m', 'Garrote 25-36 m', 'Boi acima de 36 m', 'Touro']
+export const CATEGORIAS_EQUINOS = ['Cavalo', 'Égua', 'Potro', 'Potra', 'Muar']
 export const TIPOS_AREA = ['Pasto', 'Agricultura', 'Reflorestamento/Mata', 'Desmatado/Sem definição', 'Eucalipto', 'Outro']
 
 export function reais(v?: number | null) {

@@ -30,6 +30,7 @@ export function Vendas() {
         <div>
           <select value={ano} onChange={e => setAno(e.target.value)}>{[0, 1, 2].map(i => String(new Date().getFullYear() - i)).map(a => <option key={a}>{a}</option>)}</select>
           <button className="sec" onClick={exportar} disabled={!lista.length}>Exportar Excel (CSV)</button>
+          <Link className="botao" to="/vendas/nova">+ Nova venda</Link>
         </div>
       </div>
       <div className="indicadores">
@@ -47,7 +48,7 @@ export function Vendas() {
         {lista.length > 0 && <tfoot><tr><th colSpan={4}>Total</th><th className="num">{num(t('quantidade'), 0)}</th><th className="num">{kg(t('peso_balanca_kg'))}</th><th></th><th></th><th className="num">{reais(t('valor_total'))}</th></tr></tfoot>}
       </table></div>
       {!lista.length && <p className="vazio">Nenhuma venda em {ano}.</p>}
-      <p><small>Lançamento de novas vendas e compras entra na próxima etapa. ⚠️ = venda com observação.</small></p>
+      <p><small>⚠️ = venda com observação.</small></p>
     </>
   )
 }

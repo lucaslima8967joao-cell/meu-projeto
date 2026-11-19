@@ -75,3 +75,19 @@ tfoot th { border-top: 2px solid var(--borda); color: var(--texto); }
 .pend { color: var(--alerta); font-style: italic; }
 .mini-num { width: 4.2rem; min-height: 34px; padding: .2rem .3rem; text-align: right; }
 table.rel td, table.rel th { padding: .35rem .3rem; }
+.topo .lupa { margin-left: auto; text-decoration: none; font-size: 1.2rem; }
+.topo .lupa + .quem { margin-left: 0; }
+.botao-imprimir { margin-left: auto; }
+/* Impressão / PDF: só o conteúdo, sem menus e botões */
+@media print {
+  :root { --fundo: #fff; --cartao: #fff; --texto: #000; --borda: #999; }
+  .topo, .menu, .sinc, button, .botao, .filtros, .abas, form .acoes, .dados-salvos { display: none !important; }
+  .conteudo { padding: 0; max-width: none; }
+  .cartao { break-inside: avoid; border-color: #999; }
+  .tabela-rolagem { overflow: visible; }
+  a { color: #000; text-decoration: none; }
+  body { font-size: 11pt; }
+}
+.topo .imprimir { color: #fff; border-color: #fff; }
+@media (max-width: 600px) { .topo .quem { display: none; } }
+table.itens-venda input { min-width: 7.5rem; } table.itens-venda td:nth-child(5) input { min-width: 5.5rem; } table.itens-venda input[type="date"] { min-width: 10rem; }

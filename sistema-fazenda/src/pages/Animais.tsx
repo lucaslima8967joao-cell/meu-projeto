@@ -10,9 +10,9 @@ import type { Animal } from '../lib/tipos'
 
 function csv(linhas: Animal[]) {
   baixarCSV('animais.csv',
-    ['Controle', 'Chip', 'Brinco', 'Nome', 'Sexo', 'Raça', 'Nascimento', 'Idade (meses)', 'Categoria', 'Matriz', 'Lote', 'Pasto', 'Mãe', 'Último peso (kg)', 'Data último peso', 'Situação'],
-    linhas.map(a => [a.controle, a.chip, a.brinco, a.nome, SEXO[a.sexo], a.raca, dataBR(a.nascimento), a.idade_meses, a.categoria_atual, a.matriz ? 'Sim' : '',
-      a.lote_nome, a.pasto_codigo, a.mae_controle, a.ultimo_peso_kg?.toString().replace('.', ','), dataBR(a.ultima_pesagem), SITUACAO[a.situacao]]))
+    ['Espécie', 'Controle', 'Chip', 'Brinco', 'Nome', 'Sexo', 'Raça', 'Nascimento', 'Idade (meses)', 'Categoria', 'Matriz', 'Lote', 'Pasto', 'Mãe', 'Último peso (kg)', 'Data último peso', 'Último diagnóstico', 'Situação'],
+    linhas.map(a => [a.especie, a.controle, a.chip, a.brinco, a.nome, SEXO[a.sexo], a.raca, dataBR(a.nascimento), a.idade_meses, a.categoria_atual, a.matriz ? 'Sim' : '',
+      a.lote_nome, a.pasto_codigo, a.mae_controle, a.ultimo_peso_kg?.toString().replace('.', ','), dataBR(a.ultima_pesagem), a.ultimo_diagnostico, SITUACAO[a.situacao]]))
 }
 
 export default function Animais() {
@@ -21,7 +21,7 @@ export default function Animais() {
   const [todos, setTodos] = useState<Animal[] | null>(null)
   const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
   const [busca, setBusca] = useState('')
-  const [f, setF] = useState({ sexo: '', categoria: '', raca: '', lote: '', pasto: '', situacao: 'ativo', idadeMin: '', idadeMax: '' })
+  const [f, setF] = useState({ especie: 'Bovino', repro: '', sexo: '', categoria: '', raca: '', lote: '', pasto: '', situacao: 'ativo', idadeMin: '', idadeMax: '' })
 
   useEffect(() => {
     lerComCache('v_animais', () => buscarTodos<Animal>((de, ate) => supabase.from('v_animais').select('*').eq('arquivado', false).order('controle').order('id').range(de, ate)), [] as Animal[])
@@ -34,6 +34,7 @@ export default function Animais() {
     const q = busca.trim().toLowerCase()
     return (todos || []).filter(a =>
       (!q || [a.controle, a.chip, a.brinco, a.nome].some(v => v?.toLowerCase().includes(q))) &&
+      (!f.especie || (a.especie || 'Bovino') === f.especie) && (!f.repro || (f.repro === 'sem' ? !a.ultimo_diagnostico && a.sexo === 'F' : a.ultimo_diagnostico === f.repro)) &&
       (!f.sexo || a.sexo === f.sexo) && (!f.categoria || (f.categoria === 'matriz' ? a.matriz : a.categoria_atual === f.categoria)) &&
       (!f.raca || a.raca === f.raca) && (!f.lote || a.lote_id === f.lote) && (!f.pasto || a.pasto_id === f.pasto) &&
       (!f.situacao || a.situacao === f.situacao) &&
@@ -55,6 +56,8 @@ export default function Animais() {
       <AvisoCache {...cache} />
       <input className="busca" placeholder="Buscar por controle, chip, brinco ou nome…" value={busca} onChange={e => setBusca(e.target.value)} autoFocus />
       <div className="filtros">
+        <select value={f.especie} onChange={set('especie')}><option value="">Bovinos e equinos</option><option value="Bovino">Bovinos</option><option value="Equino">Equinos (cavalos)</option></select>
+        <select value={f.repro} onChange={set('repro')}><option value="">Reprodução</option><option value="Prenhe">Prenhes</option><option value="Vazia">Vazias</option><option value="sem">Fêmeas sem diagnóstico</option></select>
         <select value={f.situacao} onChange={set('situacao')}><option value="">Todas situações</option>{Object.entries(SITUACAO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <select value={f.sexo} onChange={set('sexo')}><option value="">Sexo</option><option value="M">Macho</option><option value="F">Fêmea</option></select>
         <select value={f.categoria} onChange={set('categoria')}><option value="">Categoria</option><option value="matriz">Só matrizes</option>{categorias.map(c => <option key={c}>{c}</option>)}</select>
@@ -73,7 +76,7 @@ export default function Animais() {
               <tbody>{lista.map(a => (
                 <tr key={a.id} onClick={() => (location.hash = `#/animais/${a.id}`)}>
                   <td><Link to={`/animais/${a.id}`}>{a.controle || a.brinco || '—'}</Link>{a.nome && <small> {a.nome}</small>}</td>
-                  <td>{a.chip || '—'}</td><td>{SEXO[a.sexo]}</td><td>{a.raca || '—'}</td><td>{a.categoria_atual || '—'}{a.matriz && <small> · matriz</small>}</td>
+                  <td>{a.chip || '—'}</td><td>{SEXO[a.sexo]}</td><td>{a.raca || '—'}</td><td>{a.categoria_atual || '—'}{a.matriz && <small> · matriz</small>}{a.ultimo_diagnostico && <small> · {a.ultimo_diagnostico.toLowerCase()}</small>}</td>
                   <td>{idade(a.idade_meses)}</td><td>{a.lote_nome || '—'}</td><td>{a.pasto_codigo || '—'}</td>
                   <td className="num">{kg(a.ultimo_peso_kg)}<small> {dataBR(a.ultima_pesagem)}</small></td>
                 </tr>))}</tbody>
