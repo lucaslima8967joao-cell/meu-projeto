@@ -17,7 +17,7 @@ export default function Login() {
         if (senha.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.')
         const { error } = await supabase.auth.signUp({ email, password: senha, options: { data: { nome } } })
         if (error) throw error
-        setMsg('Conta criada. Se for pedido, confirme pelo e-mail. Depois o administrador precisa liberar o acesso.')
+        setMsg('Conta criada! Agora aperte em "Já tenho conta" e entre com o mesmo e-mail e senha. (A primeira conta do sistema já entra como administrador; as outras esperam o administrador liberar.)')
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })
         if (error) throw error

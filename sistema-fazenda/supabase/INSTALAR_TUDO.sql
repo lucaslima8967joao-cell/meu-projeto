@@ -1,7 +1,7 @@
 -- ============================================================
 -- INSTALAR TUDO — Sistema de Gestão da Fazenda (Fazenda 2)
--- Cole este arquivo inteiro no SQL Editor do Supabase e clique em Run. Só uma vez.
--- (É a junção de migrations/001 a 004.)
+-- Normalmente NÃO é preciso usar: o Vercel instala o banco sozinho ao publicar.
+-- Só use este arquivo para instalar manualmente pelo SQL Editor do Supabase.
 -- ============================================================
 
 -- >>>>>>>>>> migrations/001_mvp.sql
@@ -1427,3 +1427,24 @@ grant execute on function public.registrar_nascimento(uuid, uuid, uuid, text, da
 alter table public.pesagens      add column if not exists lancado_em timestamptz;
 alter table public.movimentacoes add column if not exists lancado_em timestamptz;
 alter table public.nascimentos   add column if not exists lancado_em timestamptz;
+
+-- >>>>>>>>>> migrations/005_confirmar_email.sql
+-- =====================================================================
+-- Contas novas já entram confirmadas (sem depender do link por e-mail,
+-- que no celular costuma abrir no lugar errado).
+-- A segurança continua: toda conta nova nasce BLOQUEADA e só entra
+-- depois que o administrador libera em "Usuários". A primeira conta
+-- criada vira administrador automaticamente (regra do 001).
+-- =====================================================================
+create or replace function public.confirmar_email_novo_usuario() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.email_confirmed_at is null then
+    new.email_confirmed_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_confirmar_email on auth.users;
+create trigger trg_confirmar_email before insert on auth.users
+  for each row execute function public.confirmar_email_novo_usuario();

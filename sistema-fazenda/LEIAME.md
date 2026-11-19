@@ -22,7 +22,7 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 ### 1. Criar o banco de dados (Supabase, gratuito)
 1. Acesse **supabase.com** → *Start your project* → entre com a conta Google ou GitHub.
 2. *New project*: nome `fazenda`, escolha uma **senha forte do banco** (guarde num lugar seguro), região **South America (São Paulo)**.
-3. No menu da esquerda: **SQL Editor** → *New query* → abra o arquivo `supabase/INSTALAR_TUDO.sql`, copie **tudo**, cole e clique em **Run**. Deve aparecer *Success*. Isso cria o banco e já importa as 60 áreas e as 5 vendas de 2026. (Rode só uma vez.)
+3. **Não é preciso rodar nada no SQL Editor**: quando o banco é ligado pela integração Supabase do Vercel, cada publicação roda `scripts/instalar-banco.mjs`, que instala/atualiza o banco sozinho (60 áreas e 5 vendas incluídas) e nunca duplica. Se precisar instalar manualmente, use `supabase/INSTALAR_TUDO.sql`.
 4. **Authentication → Sign In / Providers → Email**: deixe ativado. (Opcional: desligar *Confirm email* para não exigir confirmação por e-mail.)
 5. **Project Settings → API**: copie a **Project URL** e a chave **anon / publishable**.
    ⚠️ Nunca use nem compartilhe a chave **service_role / secret**.
