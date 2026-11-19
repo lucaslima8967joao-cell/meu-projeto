@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { comLimite } from './lib/offline'
@@ -13,6 +13,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [carregando, setCarregando] = useState(true)
   const [n, setN] = useState(0)
   const [recuperando, setRec] = useState(false)
+  const usuarioId = sessao?.user.id
+  const perfilCarregado = useRef(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSessao(data.session))
@@ -21,11 +23,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!sessao) { setPerfil(null); setCarregando(false); return }
-    setCarregando(true)
+    if (!sessao) { perfilCarregado.current = false; setPerfil(null); setCarregando(false); return }
+    // Só mostra "Entrando…" na primeira carga; renovação do login (a cada ~1h) ou troca
+    // de senha atualizam o perfil em segundo plano, sem desmontar a tela aberta.
+    if (!perfilCarregado.current) setCarregando(true)
     const chave = 'perfil:' + sessao.user.id
     const guardado = () => { try { return JSON.parse(localStorage.getItem(chave) || 'null') } catch { return null } }
-    if (!navigator.onLine && guardado()) { setPerfil(guardado()); setCarregando(false); return }
+    if (!navigator.onLine && guardado()) { perfilCarregado.current = true; setPerfil(guardado()); setCarregando(false); return }
     comLimite(Promise.resolve(supabase.from('perfis').select('*').eq('id', sessao.user.id).maybeSingle()), 8000)
       .catch(error => ({ data: null, error }))
       .then(({ data, error }) => {
@@ -36,9 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPerfil(data as Perfil | null)
           try { localStorage.setItem(chave, JSON.stringify(data)) } catch { /* armazenamento indisponível */ }
         }
+        perfilCarregado.current = true
         setCarregando(false)
       })
-  }, [sessao, n])
+  }, [usuarioId, n]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const ativo = Boolean(perfil?.ativo)
   return (

@@ -89,6 +89,12 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 | Operador | Consultar; registrar pesagens, nascimentos e movimentações; atualizar as próprias tarefas |
 | Cantina | Só a cantina: produtos, preços, vendas, estoque e contas da cantina (não fecha o mês e não vê nada da fazenda) |
 
+## Esqueci a senha
+O e-mail gratuito do Supabase tem limite (poucos por hora) e pode não chegar. Por isso:
+- **Logado em algum aparelho?** Toque em **👤 Minha conta → Trocar senha** (não precisa de e-mail).
+- **Não lembra e não está logado?** O **administrador** entra em **Usuários → Definir nova senha** e passa a senha pessoalmente; a pessoa troca depois em *Minha conta*.
+- Para o e-mail de recuperação funcionar sempre, configure um SMTP próprio em Supabase → Authentication → Emails (opcional).
+
 ## Backup e restauração
 - **Automático**: o Supabase guarda backups diários (no plano gratuito, dos últimos dias; no pago, mais tempo e restauração pontual).
 - **Manual (recomendado 1x por semana)**: em **Animais → Exportar Excel (CSV)** você baixa a lista completa.

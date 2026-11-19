@@ -16,6 +16,7 @@ import VendaNova from './pages/VendaNova'
 import Busca from './pages/Busca'
 import Sistema from './pages/Sistema'
 import Cantina from './pages/Cantina'
+import MinhaConta from './pages/MinhaConta'
 import Pendencias, { StatusSincronizacao } from './pages/Pendencias'
 import Rebanho from './pages/Rebanho'
 import Servicos from './pages/Servicos'
@@ -49,7 +50,7 @@ export default function App() {
     <div className="app">
       <header className="topo">
         <span className="marca">🛒 Cantina</span>
-        <span className="quem">{perfil.nome || perfil.email}</span>
+        <Link to="/conta" className="quem visivel" title="Minha conta (trocar senha)">👤 {(perfil.nome || perfil.email || '').split(' ')[0]}</Link>
         <button className="sec mini imprimir" title="Imprimir ou salvar em PDF" onClick={() => window.print()}>🖨️ PDF</button>
         <button className="sec mini" onClick={() => supabase.auth.signOut()}>Sair</button>
       </header>
@@ -57,6 +58,7 @@ export default function App() {
       <main className="conteudo">
         <Routes>
           <Route path="/pendencias" element={<Pendencias />} />
+          <Route path="/conta" element={<MinhaConta />} />
           <Route path="*" element={<Cantina />} />
         </Routes>
       </main>
@@ -69,7 +71,7 @@ export default function App() {
         <span className="marca">🐂 Gestão da Fazenda</span>
         <Link to="/busca" className="lupa" title="Buscar">🔍</Link>
         <button className="sec mini imprimir" title="Imprimir ou salvar esta tela em PDF" onClick={() => window.print()}>🖨️ PDF</button>
-        <span className="quem">{perfil.nome || perfil.email} · {perfil.papel}</span>
+        <Link to="/conta" className="quem" title="Minha conta (trocar senha)">{perfil.nome || perfil.email} · {perfil.papel}</Link>
         <button className="sec mini" onClick={() => supabase.auth.signOut()}>Sair</button>
       </header>
       <StatusSincronizacao />
@@ -89,6 +91,7 @@ export default function App() {
         {gestor && <NavLink to="/colaboradores">Colaboradores</NavLink>}
         {admin && <NavLink to="/usuarios">Usuários</NavLink>}
         {admin && <NavLink to="/sistema">Cópia e histórico</NavLink>}
+        <NavLink to="/conta">👤 Minha conta</NavLink>
       </nav>
       <main className="conteudo">
         <Routes>
@@ -111,6 +114,7 @@ export default function App() {
           <Route path="/colaboradores" element={gestor ? <Colaboradores /> : <Navigate to="/" />} />
           <Route path="/cantina" element={<Cantina />} />
           <Route path="/busca" element={<Busca />} />
+          <Route path="/conta" element={<MinhaConta />} />
           <Route path="/sistema" element={admin ? <Sistema /> : <Navigate to="/" />} />
           <Route path="/pendencias" element={<Pendencias />} />
           <Route path="*" element={<Navigate to="/" />} />

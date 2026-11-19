@@ -21,7 +21,7 @@ export default function Login() {
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })
         if (error) throw error
-        setMsg('Se o e-mail estiver cadastrado, você vai receber um link para criar uma nova senha.')
+        setMsg('Se o e-mail estiver cadastrado, o link chega em alguns minutos (veja também o spam). Se não chegar, peça ao administrador: ele define uma senha nova para você em "Usuários". Se você já estiver logado em outro aparelho (ex.: celular), troque a senha em "Minha conta".')
       }
     } catch (e) { setErro(erroAmigavel(e)) } finally { setOcupado(false) }
   }
