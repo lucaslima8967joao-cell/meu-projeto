@@ -91,3 +91,4 @@ table.rel td, table.rel th { padding: .35rem .3rem; }
 .topo .imprimir { color: #fff; border-color: #fff; }
 @media (max-width: 600px) { .topo .quem { display: none; } }
 table.itens-venda input { min-width: 7.5rem; } table.itens-venda td:nth-child(5) input { min-width: 5.5rem; } table.itens-venda input[type="date"] { min-width: 10rem; }
+.confirmacao { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .5rem; padding: .5rem; border-radius: 8px; background: var(--perigo-claro); }

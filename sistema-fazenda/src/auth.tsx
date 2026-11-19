@@ -4,8 +4,8 @@ import { supabase } from './lib/supabase'
 import { comLimite } from './lib/offline'
 import type { Perfil } from './lib/tipos'
 
-interface Ctx { recuperando: boolean; fimRecuperacao: () => void; sessao: Session | null; perfil: Perfil | null; carregando: boolean; gestor: boolean; admin: boolean; recarregar: () => void }
-const AuthCtx = createContext<Ctx>({ recuperando: false, fimRecuperacao: () => {}, sessao: null, perfil: null, carregando: true, gestor: false, admin: false, recarregar: () => {} })
+interface Ctx { cantina: boolean; recuperando: boolean; fimRecuperacao: () => void; sessao: Session | null; perfil: Perfil | null; carregando: boolean; gestor: boolean; admin: boolean; recarregar: () => void }
+const AuthCtx = createContext<Ctx>({ cantina: false, recuperando: false, fimRecuperacao: () => {}, sessao: null, perfil: null, carregando: true, gestor: false, admin: false, recarregar: () => {} })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessao, setSessao] = useState<Session | null>(null)
@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessao, perfil, carregando,
       gestor: ativo && (perfil?.papel === 'admin' || perfil?.papel === 'gerente'),
       admin: ativo && perfil?.papel === 'admin',
+      cantina: ativo && perfil?.papel === 'cantina',
       recarregar: () => setN(x => x + 1),
     }}>{children}</AuthCtx.Provider>
   )

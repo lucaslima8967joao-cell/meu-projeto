@@ -1,4 +1,4 @@
-export type Papel = 'admin' | 'gerente' | 'operador'
+export type Papel = 'admin' | 'gerente' | 'operador' | 'cantina'
 export interface Perfil { id: string; nome: string; email: string | null; papel: Papel; ativo: boolean }
 export interface Fazenda { id: string; nome: string; municipio: string | null; obs: string | null; arquivado: boolean }
 export interface Pasto {

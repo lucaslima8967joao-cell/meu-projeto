@@ -87,6 +87,7 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 | Administrador | Tudo, inclusive usuários |
 | Gerente | Cadastrar/editar animais, pastos, lotes e tarefas |
 | Operador | Consultar; registrar pesagens, nascimentos e movimentações; atualizar as próprias tarefas |
+| Cantina | Só a cantina: produtos, preços, vendas, estoque e contas da cantina (não fecha o mês e não vê nada da fazenda) |
 
 ## Backup e restauração
 - **Automático**: o Supabase guarda backups diários (no plano gratuito, dos últimos dias; no pago, mais tempo e restauração pontual).

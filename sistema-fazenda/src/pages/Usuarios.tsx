@@ -23,6 +23,7 @@ export default function Usuarios() {
       <ul className="dicas">
         <li><b>Administrador</b>: vê e gerencia tudo, inclusive usuários.</li>
         <li><b>Gerente</b>: cadastra e edita animais, pastos, lotes e tarefas.</li>
+        <li><b>Cantina</b>: vê e mexe <b>só na cantina</b> (produtos, preços, vendas, estoque e contas da cantina). Não vê rebanho, vendas de gado, valores nem dados da equipe.</li>
         <li><b>Operador</b>: consulta; registra pesagens, nascimentos e movimentações; atualiza as próprias tarefas.</li>
       </ul>
       {erro && <p className="erro">{erro}</p>}
@@ -31,7 +32,7 @@ export default function Usuarios() {
         <tbody>{lista.map(p => <tr key={p.id} className={p.ativo ? '' : 'pendente'}>
           <td>{p.nome || '—'}</td><td>{p.email}</td>
           <td><select value={p.papel} disabled={p.id === perfil?.id} onChange={e => alterar(p, { papel: e.target.value as Perfil['papel'] })}>
-            <option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="operador">Operador</option></select></td>
+            <option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="operador">Operador</option><option value="cantina">Cantina</option></select></td>
           <td>{p.id === perfil?.id ? 'Você' : p.ativo
             ? <button className="perigo mini" onClick={() => confirm(`Bloquear o acesso de ${p.nome || p.email}?`) && alterar(p, { ativo: false })}>Bloquear</button>
             : <button className="mini" onClick={() => alterar(p, { ativo: true })}>Liberar acesso</button>}</td>

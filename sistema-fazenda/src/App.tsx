@@ -24,7 +24,7 @@ import Maquinas from './pages/Maquinas'
 import Colaboradores from './pages/Colaboradores'
 
 export default function App() {
-  const { sessao, perfil, carregando, admin, gestor, recuperando } = useAuth()
+  const { sessao, perfil, carregando, admin, gestor, cantina, recuperando } = useAuth()
   const loc = useLocation()
   const ehIatf = loc.pathname === '/tarefas' && loc.search.includes('categoria=IATF')
 
@@ -43,6 +43,24 @@ export default function App() {
       <p>Sua conta (<b>{sessao.user.email}</b>) foi criada. O administrador precisa liberar o seu acesso.</p>
       <button className="sec" onClick={() => supabase.auth.signOut()}>Sair</button>
     </div></div>
+  )
+
+  if (cantina) return (
+    <div className="app">
+      <header className="topo">
+        <span className="marca">🛒 Cantina</span>
+        <span className="quem">{perfil.nome || perfil.email}</span>
+        <button className="sec mini imprimir" title="Imprimir ou salvar em PDF" onClick={() => window.print()}>🖨️ PDF</button>
+        <button className="sec mini" onClick={() => supabase.auth.signOut()}>Sair</button>
+      </header>
+      <StatusSincronizacao />
+      <main className="conteudo">
+        <Routes>
+          <Route path="/pendencias" element={<Pendencias />} />
+          <Route path="*" element={<Cantina />} />
+        </Routes>
+      </main>
+    </div>
   )
 
   return (

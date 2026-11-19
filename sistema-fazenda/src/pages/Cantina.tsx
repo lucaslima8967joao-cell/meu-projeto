@@ -17,7 +17,8 @@ const fimMes = (iso: string) => { const d = new Date(iso + 'T12:00:00'); d.setMo
 const n = (v: string) => (v.trim() ? Number(v.replace(/\./g, '').replace(',', '.')) : NaN)
 
 export default function Cantina() {
-  const { gestor } = useAuth()
+  const { gestor: ehGestor, cantina } = useAuth()
+  const gestor = ehGestor || cantina   // pode cadastrar produtos, ver custos e todas as contas da cantina
   const [aba, setAba] = useState<Aba>('vender')
   const [prods, setProds] = useState<Produto[]>([])
   const [pessoas, setPessoas] = useState<Pessoa[]>([])
@@ -123,14 +124,14 @@ export default function Cantina() {
       </div>
       <AvisoCache {...cache} />
       {erro && <p className="erro">{erro}</p>}{ok && <p className="ok">{ok}</p>}
-      <div className="abas">{([['vender', '🛒 Vender'], ['produtos', 'Produtos e estoque'], ['contas', gestor ? 'Contas do mês' : 'Minhas vendas'], ['minha', 'Minha conta']] as [Aba, string][])
+      <div className="abas">{([['vender', '🛒 Vender'], ['produtos', 'Produtos e estoque'], ['contas', gestor ? 'Contas do mês' : 'Minhas vendas'], ...(cantina ? [] : [['minha', 'Minha conta']])] as [Aba, string][])
         .map(([k, t]) => <button key={k} className={aba === k ? '' : 'sec'} onClick={() => { setAba(k); setErro(''); setOk('') }}>{t}</button>)}</div>
 
       {aba === 'vender' && <div className="duas">
         <section className="cartao">
           <h2>1. Para quem</h2>
           <select value={cliente} onChange={e => setCliente(e.target.value)}><option value="">Escolha o funcionário…</option>{pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}{p.funcao ? ` (${p.funcao})` : ''}</option>)}</select>
-          {!pessoas.length && <p className="aviso">Nenhum colaborador ativo. {gestor ? 'Cadastre em Colaboradores.' : 'Peça ao administrador para cadastrar.'}</p>}
+          {!pessoas.length && <p className="aviso">Nenhum colaborador ativo. {ehGestor ? 'Cadastre em Colaboradores.' : 'Peça ao administrador para cadastrar os funcionários.'}</p>}
           <h2 style={{ marginTop: '1rem' }}>2. Produtos</h2>
           <input placeholder="Buscar produto…" value={busca} onChange={e => setBusca(e.target.value)} />
           <div className="sugestoes" style={{ marginTop: '.5rem' }}>{achados.map(p => <button type="button" key={p.id} className="sec mini" onClick={() => adicionar(p)}>{p.nome} · {reais(p.preco_venda)}</button>)}</div>
@@ -188,7 +189,7 @@ export default function Cantina() {
           <div>
             <button className="sec" onClick={() => baixarCSV(`cantina-${mes}.csv`, ['Funcionário', 'Desconto em folha', 'Dinheiro', 'Pix', 'Itens', 'Situação'],
               contas.map(c => [nome(c.id), c.folha.toFixed(2).replace('.', ','), c.dinheiro.toFixed(2).replace('.', ','), c.pix.toFixed(2).replace('.', ','), c.itens, fechado(c.id) ? 'Fechado' : 'Em aberto']))}>Exportar Excel (CSV)</button>
-            {gestor && <button onClick={fecharMes}>Fechar mês (desconto em folha)</button>}
+            {ehGestor && <button onClick={fecharMes}>Fechar mês (desconto em folha)</button>}
           </div></div>
         {contas.length ? <table><thead><tr><th>Funcionário</th><th className="num">Desconto em folha</th><th className="num">Dinheiro</th><th className="num">Pix</th><th>Situação</th></tr></thead>
           <tbody>{contas.map(c => <tr key={c.id}><td><b>{nome(c.id)}</b></td><td className="num"><b>{reais(c.folha)}</b></td><td className="num">{reais(c.dinheiro)}</td><td className="num">{reais(c.pix)}</td>

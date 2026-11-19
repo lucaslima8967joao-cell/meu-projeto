@@ -22,6 +22,7 @@ export default function Servicos() {
   const [lista, setLista] = useState<Servico[]>([])
   const [f, setF] = useState({ tipo: '', status: '' })
   const [aberto, setAberto] = useState<string | null>(null)
+  const [confirmando, setConfirmando] = useState<string | null>(null)  // confirmação no próprio cartão (sem janela do celular)
   const [novo, setNovo] = useState<Record<string, string> | null>(null)
   const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
   const [erro, setErro] = useState(''), [ok, setOk] = useState('')
@@ -38,6 +39,8 @@ export default function Servicos() {
 
   async function mudarStatus(s: Servico, status: string) {
     const dados: Record<string, unknown> = { status }
+    setConfirmando(null)
+    if (status === 'Planejado') { dados.data_realizada = null }
     if (status === 'Concluído') {
       const c = prompt('Custo realizado (R$), se souber:', s.custo_realizado?.toString() || '')
       if (c === null) return
@@ -124,8 +127,15 @@ export default function Servicos() {
               <span className={`status st-${s.status === 'Concluído' ? 'concluida' : s.status === 'Em andamento' ? 'andamento' : 'pendente'}`}>{s.status}{s.data_realizada ? ` ${dataBR(s.data_realizada)}` : ''}</span>
               {pode && s.status === 'Planejado' && <button className="sec mini" onClick={() => mudarStatus(s, 'Em andamento')}>Iniciar</button>}
               {pode && s.status !== 'Concluído' && s.status !== 'Cancelado' && <button className="mini" onClick={() => mudarStatus(s, 'Concluído')}>Concluir</button>}
-              {gestor && s.status !== 'Cancelado' && s.status !== 'Concluído' && <button className="perigo mini" onClick={() => confirm('Cancelar este serviço?') && mudarStatus(s, 'Cancelado')}>Cancelar</button>}
+              {pode && s.status === 'Em andamento' && <button className="sec mini" onClick={() => mudarStatus(s, 'Planejado')}>↩ Voltar a planejado</button>}
+              {gestor && (s.status === 'Cancelado' || s.status === 'Concluído') && <button className="sec mini" onClick={() => mudarStatus(s, 'Planejado')}>Reabrir</button>}
+              {gestor && s.status !== 'Cancelado' && s.status !== 'Concluído' && confirmando !== s.id && <button className="perigo mini" onClick={() => setConfirmando(s.id)}>Cancelar serviço</button>}
             </div>
+            {confirmando === s.id && <div className="confirmacao">
+              <span>Tem certeza que quer <b>cancelar</b> este serviço?</span>
+              <button className="perigo mini" onClick={() => mudarStatus(s, 'Cancelado')}>Sim, cancelar serviço</button>
+              <button className="sec mini" onClick={() => setConfirmando(null)}>Não</button>
+            </div>}
           </div>
         )
       })}</div>
