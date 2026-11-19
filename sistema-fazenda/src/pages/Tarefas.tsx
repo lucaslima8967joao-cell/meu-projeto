@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PRIORIDADE, STATUS, dataBR, erroAmigavel, hojeISO } from '../lib/formato'
 import { useListas } from '../lib/dados'
@@ -7,16 +8,19 @@ import { AvisoCache } from './Pendencias'
 import { useAuth } from '../auth'
 import type { Tarefa } from '../lib/tipos'
 
-type Visao = 'hoje' | 'atrasadas' | 'proximas' | 'semana' | 'pessoa' | 'concluidas'
+type Visao = 'hoje' | 'atrasadas' | 'proximas' | 'semana' | 'mes' | 'pessoa' | 'concluidas'
 const somaDias = (iso: string, d: number) => { const x = new Date(iso + 'T12:00:00'); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10) }
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
-const VAZIA = { titulo: '', descricao: '', data: hojeISO(), hora: '', prioridade: 'media', pasto_id: '', local_texto: '', responsavel_id: '', equipe: '', materiais: '' }
+const VAZIA = { categoria: 'Geral', titulo: '', descricao: '', data: hojeISO(), hora: '', prioridade: 'media', pasto_id: '', local_texto: '', responsavel_id: '', equipe: '', materiais: '' }
 
 export default function Tarefas() {
   const { perfil, gestor } = useAuth()
   const { pastos, pessoas } = useListas()
   const [visao, setVisao] = useState<Visao>('hoje')
   const [soMinhas, setSoMinhas] = useState(!gestor)
+  const [params] = useSearchParams()
+  const [cat, setCat] = useState(params.get('categoria') || '')
+  useEffect(() => { setCat(params.get('categoria') || '') }, [params])
   const [lista, setLista] = useState<Tarefa[]>([])
   const [nova, setNova] = useState<typeof VAZIA | null>(null)
   const [erro, setErro] = useState(''), [ok, setOk] = useState('')
@@ -32,10 +36,12 @@ export default function Tarefas() {
     if (visao === 'atrasadas') q = q.lt('data', hoje).neq('status', 'concluida')
     if (visao === 'proximas') q = q.gt('data', hoje).lte('data', somaDias(hoje, 7))
     if (visao === 'semana') q = q.gte('data', hoje).lte('data', somaDias(hoje, 6))
+    if (visao === 'mes') q = q.gte('data', hoje).lte('data', somaDias(hoje, 30))
+    if (cat) q = q.eq('categoria', cat)
     if (visao === 'pessoa') q = q.gte('data', somaDias(hoje, -1)).neq('status', 'concluida')
     if (visao === 'concluidas') q = q.eq('status', 'concluida').gte('data', somaDias(hoje, -30))
     if (soMinhas && perfil) q = q.eq('responsavel_id', perfil.id)
-    lerComCache(`tarefas:${visao}:${soMinhas ? 'minhas' : 'todas'}`, () => consulta<Tarefa[]>(q.order('data', { ascending: visao !== 'concluidas' }).order('hora', { nullsFirst: false }).limit(500)), [] as Tarefa[])
+    lerComCache(`tarefas:${visao}:${cat}:${soMinhas ? 'minhas' : 'todas'}`, () => consulta<Tarefa[]>(q.order('data', { ascending: visao !== 'concluidas' }).order('hora', { nullsFirst: false }).limit(500)), [] as Tarefa[])
       .then(r => {
         if (meu !== pedido.current) return // chegou uma resposta mais nova; ignora esta
         // aplica por cima as mudanças de status que ainda estão na fila do aparelho
@@ -43,7 +49,7 @@ export default function Tarefas() {
         pendentes.forEach(p => { if (p.op.tipo === 'update' && p.op.tabela === 'tarefas') mud.set(p.op.alvo, { ...(mud.get(p.op.alvo) || {}), ...p.op.dados }) })
         setLista(r.dados.map(t => (mud.has(t.id) ? { ...t, ...mud.get(t.id) } as Tarefa : t))); setCache(r)
       }, e => setErro(String(e)))
-  }, [visao, soMinhas, perfil, hoje, pendentes])
+  }, [visao, soMinhas, perfil, hoje, pendentes, cat])
   useEffect(carregar, [carregar])
 
   async function status(t: Tarefa, s: Tarefa['status']) {
@@ -72,7 +78,7 @@ export default function Tarefas() {
 
   const cartao = (t: Tarefa) => (
     <div key={t.id} className={`tarefa p-${t.prioridade} s-${t.status}${t.data < hoje && t.status !== 'concluida' ? ' atrasada' : ''}`}>
-      <div className="t-topo"><b>{t.titulo}</b><span className="etiqueta">{PRIORIDADE[t.prioridade]}</span></div>
+      <div className="t-topo"><b>{t.titulo}</b>{t.categoria && t.categoria !== 'Geral' && <span className="etiqueta">{t.categoria}</span>}<span className="etiqueta">{PRIORIDADE[t.prioridade]}</span></div>
       <small>{dataBR(t.data)}{t.hora ? ` · ${t.hora.slice(0, 5)}` : ''} · {nomeDe(t.responsavel_id)}{t.equipe ? ` (${t.equipe})` : ''}
         {(pastoDe(t.pasto_id) || t.local_texto) && ` · 📍 ${[pastoDe(t.pasto_id), t.local_texto].filter(Boolean).join(' – ')}`}</small>
       {t.descricao && <p>{t.descricao}</p>}
@@ -103,8 +109,9 @@ export default function Tarefas() {
         {gestor && <button onClick={() => setNova({ ...VAZIA })}>+ Nova tarefa</button>}
       </div>
       <div className="abas">
-        {([['hoje', 'Hoje'], ['atrasadas', 'Atrasadas'], ['proximas', 'Próximas'], ['semana', 'Semana'], ['pessoa', 'Por colaborador'], ['concluidas', 'Concluídas']] as [Visao, string][])
+        {([['hoje', 'Hoje'], ['atrasadas', 'Atrasadas'], ['proximas', 'Próximos 7 dias'], ['semana', 'Semana'], ['mes', 'Próximos 30 dias'], ['pessoa', 'Por colaborador'], ['concluidas', 'Concluídas']] as [Visao, string][])
           .map(([k, t]) => <button key={k} className={visao === k ? '' : 'sec'} onClick={() => setVisao(k)}>{t}</button>)}
+        <select value={cat} onChange={e => setCat(e.target.value)} style={{ width: 'auto' }}><option value="">Todas as categorias</option>{['Geral', 'IATF', 'Manejo', 'Pastagem', 'Cerca', 'Máquinas', 'Nutrição'].map(c => <option key={c}>{c}</option>)}</select>
         <label className="check"><input type="checkbox" checked={soMinhas} onChange={e => setSoMinhas(e.target.checked)} /> Só as minhas</label>
       </div>
       <AvisoCache {...cache} />
@@ -115,6 +122,7 @@ export default function Tarefas() {
         <label>O que fazer *<input required value={nova.titulo} onChange={setN('titulo')} /></label>
         <label>Detalhes<textarea rows={2} value={nova.descricao} onChange={setN('descricao')} /></label>
         <div className="grade">
+          <label>Categoria<select value={nova.categoria} onChange={setN('categoria')}>{['Geral', 'IATF', 'Manejo', 'Pastagem', 'Cerca', 'Máquinas', 'Nutrição'].map(c => <option key={c}>{c}</option>)}</select></label>
           <label>Data *<input type="date" required value={nova.data} onChange={setN('data')} /></label>
           <label>Horário<input type="time" value={nova.hora} onChange={setN('hora')} /></label>
           <label>Prioridade<select value={nova.prioridade} onChange={setN('prioridade')}>{Object.entries(PRIORIDADE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>

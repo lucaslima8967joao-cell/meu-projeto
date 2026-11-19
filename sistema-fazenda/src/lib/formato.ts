@@ -67,3 +67,7 @@ export function baixarCSV(nome: string, cab: string[], linhas: unknown[][]) {
   a.download = nome; a.click()
 }
 export const RACAS = ['NEL', 'Angus', 'Cruzado', 'Outra']
+
+/** Compara códigos em ordem natural: P1, P2 … P10, P27a, P27b. */
+export const ordemNatural = (a?: string | null, b?: string | null) =>
+  (a || '').localeCompare(b || '', 'pt-BR', { numeric: true, sensitivity: 'base' })

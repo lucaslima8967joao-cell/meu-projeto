@@ -73,3 +73,5 @@ tfoot th { border-top: 2px solid var(--borda); color: var(--texto); }
 .sinc-erro { background: var(--perigo-claro); color: var(--perigo); }
 .dados-salvos { color: var(--alerta); font-size: .9rem; }
 .pend { color: var(--alerta); font-style: italic; }
+.mini-num { width: 4.2rem; min-height: 34px; padding: .2rem .3rem; text-align: right; }
+table.rel td, table.rel th { padding: .35rem .3rem; }

@@ -25,6 +25,7 @@ export interface Tarefa {
   prioridade: 'baixa' | 'media' | 'alta'; pasto_id: string | null; local_texto: string | null
   responsavel_id: string | null; equipe: string | null; materiais: string | null
   status: 'pendente' | 'andamento' | 'concluida'; obs_execucao: string | null; arquivado: boolean
+  categoria?: string
 }
 export interface Venda {
   id: string; fazenda_id: string; data: string; comprador: string; notas_fiscais: string | null; sexo: string | null

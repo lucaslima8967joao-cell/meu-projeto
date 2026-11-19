@@ -13,6 +13,11 @@ import Usuarios from './pages/Usuarios'
 import NovaSenha from './pages/NovaSenha'
 import { Vendas, VendaDetalhe } from './pages/Vendas'
 import Pendencias, { StatusSincronizacao } from './pages/Pendencias'
+import Rebanho from './pages/Rebanho'
+import Servicos from './pages/Servicos'
+import Estoque from './pages/Estoque'
+import Maquinas from './pages/Maquinas'
+import Colaboradores from './pages/Colaboradores'
 
 export default function App() {
   const { sessao, perfil, carregando, admin, gestor, recuperando } = useAuth()
@@ -46,9 +51,15 @@ export default function App() {
         <NavLink to="/" end>Painel</NavLink>
         <NavLink to="/animais">Animais</NavLink>
         <NavLink to="/nascimento">Nascimento</NavLink>
+        <NavLink to="/rebanho">Rebanho</NavLink>
+        <NavLink to="/tarefas?categoria=IATF">IATF</NavLink>
         <NavLink to="/pastos">Áreas e lotes</NavLink>
         {gestor && <NavLink to="/vendas">Vendas</NavLink>}
         <NavLink to="/tarefas">Tarefas</NavLink>
+        <NavLink to="/servicos">Serviços</NavLink>
+        <NavLink to="/estoque">Estoque</NavLink>
+        <NavLink to="/maquinas">Máquinas</NavLink>
+        {gestor && <NavLink to="/colaboradores">Colaboradores</NavLink>}
         {admin && <NavLink to="/usuarios">Usuários</NavLink>}
       </nav>
       <main className="conteudo">
@@ -64,6 +75,11 @@ export default function App() {
           <Route path="/vendas/:id" element={gestor ? <VendaDetalhe /> : <Navigate to="/" />} />
           <Route path="/tarefas" element={<Tarefas />} />
           <Route path="/usuarios" element={admin ? <Usuarios /> : <Navigate to="/" />} />
+          <Route path="/rebanho" element={<Rebanho />} />
+          <Route path="/servicos" element={<Servicos />} />
+          <Route path="/estoque" element={<Estoque />} />
+          <Route path="/maquinas" element={<Maquinas />} />
+          <Route path="/colaboradores" element={gestor ? <Colaboradores /> : <Navigate to="/" />} />
           <Route path="/pendencias" element={<Pendencias />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

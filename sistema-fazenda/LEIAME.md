@@ -44,6 +44,16 @@ Todos os usuários veem os **mesmos dados**, sincronizados numa base na nuvem (S
 - **Computador**: abra o endereço no Chrome, Edge ou Firefox. No Windows 7 use o Chrome 109 (último disponível para ele) ou Firefox ESR.
 - **Celular**: abra o endereço no Chrome (Android) ou Safari (iPhone) → menu → **Adicionar à tela inicial**. Ele vira um ícone como um app.
 
+## Módulos da etapa 2
+| Tela | O que faz |
+|---|---|
+| **Rebanho** | Relatório mensal no formato do Rel1026 (estoque anterior, nascimentos, compras, mudança de categoria, vendas, mortes, estoque atual). Out/2026 importado; “Lançar próximo mês” já traz o estoque anterior. Registro de mortes/abates/descartes |
+| **IATF** | 86 eventos da programação (out/26–fev/27) como tarefas da categoria IATF; aparecem no Painel no dia |
+| **Serviços** | Plano de Pastagens 2026/27 (10 manutenções + 4 reformas com produtos e doses) e Programa de Cercas (12 cercas + 2 benfeitorias com metragem e custos); iniciar/concluir com custo realizado |
+| **Estoque** | Insumos com saldo (contagem + entradas − saídas), estoque mínimo, validade, fórmulas e plano nutricional, pedido de compra dos insumos do plano de pastagens (previsto × realizado) |
+| **Máquinas** | Cadastro, horímetro/km, revisão a cada X h/km com aviso de vencida, manutenções e abastecimentos (diesel sai do estoque) |
+| **Colaboradores** | Cadastro (só administrador/gerente) |
+
 ## Uso SEM INTERNET (campo e curral)
 1. **Na primeira vez, entre com internet** e abra as telas que vai usar (Animais, Áreas, Tarefas, Nascimento). O app guarda uma cópia no aparelho.
 2. No campo, sem sinal, o app abre normalmente e mostra no topo **📵 Sem internet**.

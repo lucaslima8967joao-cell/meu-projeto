@@ -1448,3 +1448,546 @@ end $$;
 drop trigger if exists trg_confirmar_email on auth.users;
 create trigger trg_confirmar_email before insert on auth.users
   for each row execute function public.confirmar_email_novo_usuario();
+
+-- >>>>>>>>>> migrations/006_modulos.sql
+-- =====================================================================
+-- Etapa 2 — módulos: IATF/tarefas por categoria, relatório mensal do
+-- rebanho, mortes/abates, insumos e estoque, nutrição, serviços
+-- (pastagens, cercas, benfeitorias), pedidos de compra, máquinas,
+-- manutenção, diesel/abastecimentos e colaboradores.
+-- Nada é apagado: arquivar. Tudo auditado.
+-- =====================================================================
+
+-- ---------------------------------------------------------------- tarefas
+alter table public.tarefas add column if not exists categoria text not null default 'Geral';
+create index if not exists ix_tarefas_categoria on public.tarefas (categoria, data);
+
+-- ---------------------------------------------------------------- rebanho
+create table public.rebanho_mensal (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid not null references public.fazendas(id),
+  mes date not null,                      -- sempre o dia 1 do mês
+  grupo text not null check (grupo in ('Fêmeas','Machos','Equinos')),
+  categoria text not null,
+  ordem int not null default 0,
+  estoque_anterior int not null default 0,
+  nascimento int not null default 0, compra int not null default 0, transf_entrada int not null default 0,
+  mudanca_menos int not null default 0, mudanca_mais int not null default 0,
+  venda int not null default 0, ajuste_inventario int not null default 0, morte int not null default 0, abate int not null default 0,
+  estoque_atual int not null default 0,
+  obs text, origem text,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now(),
+  unique (fazenda_id, mes, categoria)
+);
+
+create table public.ocorrencias (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid not null references public.fazendas(id),
+  data date not null,
+  tipo text not null check (tipo in ('Morte','Abate','Descarte','Perda')),
+  numero text, sexo text, chip text, idade_texto text, causa text,
+  animal_id uuid references public.animais(id),
+  obs text, origem text,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------- máquinas
+create table public.maquinas (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid not null references public.fazendas(id),
+  nome text not null,
+  tipo text,                              -- Trator, Caminhonete, Implemento, Equipamento…
+  patrimonio text, marca text, modelo text, ano int, placa_serie text, localizacao text,
+  responsavel_id uuid references public.perfis(id),
+  estado text,                            -- Bom, Regular, Ruim, Parado
+  unidade_uso text not null default 'h' check (unidade_uso in ('h','km')),
+  uso_atual numeric(12,1) not null default 0,
+  revisao_a_cada numeric(12,1),
+  ultima_revisao_uso numeric(12,1),
+  obs text, arquivado boolean not null default false,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now()
+);
+
+create table public.manutencoes (
+  id uuid primary key default gen_random_uuid(),
+  maquina_id uuid not null references public.maquinas(id),
+  data date not null default current_date,
+  tipo text not null check (tipo in ('Preventiva','Corretiva','Revisão')),
+  descricao text not null,
+  uso numeric(12,1), custo numeric(12,2), prestador text, pecas text, obs text,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now(), lancado_em timestamptz
+);
+
+-- revisão registra o uso em que foi feita
+create or replace function public.aplicar_manutencao() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.uso is not null then
+    update public.maquinas set uso_atual = greatest(uso_atual, new.uso) where id = new.maquina_id;
+    if new.tipo in ('Revisão','Preventiva') then
+      update public.maquinas set ultima_revisao_uso = new.uso where id = new.maquina_id;
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger trg_aplicar_manutencao after insert on public.manutencoes
+  for each row execute function public.aplicar_manutencao();
+
+-- ---------------------------------------------------------------- insumos
+create table public.insumos (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null unique,
+  categoria text,                         -- Nutrição, Adubo/Corretivo, Defensivo, Semente, Medicamento, Combustível, Cerca, Peça, Outro
+  unidade text not null,                  -- kg, L, t, un, dz, m…
+  estoque_minimo numeric(14,3),
+  obs text, arquivado boolean not null default false,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now()
+);
+
+create table public.servicos (
+  id uuid primary key default gen_random_uuid(),
+  fazenda_id uuid not null references public.fazendas(id),
+  tipo text not null,                     -- Manutenção de pasto, Reforma de pasto, Cerca, Benfeitoria, Roçada, Outro
+  titulo text not null,
+  safra text,
+  prioridade int,
+  pasto_id uuid references public.pastos(id),
+  local_texto text,
+  area_ha numeric(10,2), metragem_m numeric(10,1),
+  status text not null default 'Planejado' check (status in ('Planejado','Em andamento','Concluído','Cancelado')),
+  data_prevista date, data_realizada date,
+  custo_material_previsto numeric(14,2), custo_mo_previsto numeric(14,2), custo_realizado numeric(14,2),
+  responsavel_id uuid references public.perfis(id),
+  equipamento text, descricao text, obs text, origem text,
+  arquivado boolean not null default false,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now()
+);
+
+create table public.servico_itens (
+  id uuid primary key default gen_random_uuid(),
+  servico_id uuid not null references public.servicos(id),
+  insumo_id uuid references public.insumos(id),
+  produto text not null,
+  dose numeric(12,3), unidade_dose text,
+  quantidade numeric(14,3), unidade text,
+  valor_unitario numeric(14,4), valor_total numeric(14,2),
+  obs text
+);
+
+create table public.insumo_movimentos (
+  id uuid primary key default gen_random_uuid(),
+  insumo_id uuid not null references public.insumos(id),
+  data date not null default current_date,
+  tipo text not null check (tipo in ('Entrada','Saída','Inventário')),
+  quantidade numeric(14,3) not null check (quantidade >= 0),  -- Inventário = contagem física (saldo passa a ser este)
+  valor_unitario numeric(14,4),
+  fornecedor text, nota_fiscal text, lote_produto text, validade date,
+  destino text, pasto_id uuid references public.pastos(id),
+  maquina_id uuid references public.maquinas(id), uso_maquina numeric(12,1),
+  servico_id uuid references public.servicos(id),
+  responsavel_texto text, obs text,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now(), lancado_em timestamptz
+);
+create index ix_insumo_mov on public.insumo_movimentos (insumo_id, data, criado_em);
+
+-- abastecimento atualiza o horímetro/km da máquina
+create or replace function public.aplicar_abastecimento() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.maquina_id is not null and new.uso_maquina is not null then
+    update public.maquinas set uso_atual = greatest(uso_atual, new.uso_maquina) where id = new.maquina_id;
+  end if;
+  return new;
+end $$;
+create trigger trg_aplicar_abastecimento after insert on public.insumo_movimentos
+  for each row execute function public.aplicar_abastecimento();
+
+-- saldo: parte do último inventário e soma entradas/saídas posteriores
+create or replace view public.v_insumos with (security_invoker = true) as
+with ult_inv as (
+  select distinct on (insumo_id) insumo_id, data, criado_em, quantidade
+  from public.insumo_movimentos where tipo = 'Inventário'
+  order by insumo_id, data desc, criado_em desc
+)
+select i.*,
+  coalesce(ui.quantidade, 0)
+  + coalesce((select sum(case when m.tipo = 'Entrada' then m.quantidade else -m.quantidade end)
+              from public.insumo_movimentos m
+              where m.insumo_id = i.id and m.tipo <> 'Inventário'
+                and (ui.insumo_id is null or (m.data, m.criado_em) > (ui.data, ui.criado_em))), 0) as saldo,
+  ui.data as data_inventario,
+  (select max(data) from public.insumo_movimentos m where m.insumo_id = i.id) as ultimo_movimento,
+  (select max(validade) filter (where validade >= current_date) from public.insumo_movimentos m where m.insumo_id = i.id and m.tipo = 'Entrada') as validade_mais_longa,
+  (select min(validade) filter (where validade >= current_date) from public.insumo_movimentos m where m.insumo_id = i.id and m.tipo = 'Entrada') as proxima_validade
+from public.insumos i
+left join ult_inv ui on ui.insumo_id = i.id;
+
+create or replace view public.v_maquinas with (security_invoker = true) as
+select m.*,
+  case when m.revisao_a_cada is null then null else coalesce(m.ultima_revisao_uso, 0) + m.revisao_a_cada end as proxima_revisao,
+  case when m.revisao_a_cada is null then 'Sem plano'
+       when m.uso_atual >= coalesce(m.ultima_revisao_uso, 0) + m.revisao_a_cada then 'Vencida'
+       when m.uso_atual >= coalesce(m.ultima_revisao_uso, 0) + m.revisao_a_cada * 0.9 then 'Próxima'
+       else 'Em dia' end as situacao_revisao
+from public.maquinas m;
+
+-- ---------------------------------------------------------------- nutrição
+create table public.formulas (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null unique, descricao text, origem text,
+  criado_em timestamptz not null default now()
+);
+create table public.formula_itens (
+  id uuid primary key default gen_random_uuid(),
+  formula_id uuid not null references public.formulas(id),
+  insumo_id uuid not null references public.insumos(id),
+  percentual numeric(6,4) not null check (percentual > 0 and percentual <= 1)
+);
+create table public.plano_nutricional (
+  id uuid primary key default gen_random_uuid(),
+  ano int not null, mes int not null check (mes between 1 and 12),
+  categoria text not null, lote text, n_animais int,
+  formula_id uuid references public.formulas(id), suplemento_texto text,
+  consumo_kg_cab_dia numeric(8,3), dias int, previsto_kg numeric(14,1),
+  obs text, origem text
+);
+
+-- ---------------------------------------------------------------- compras
+create table public.pedidos_compra (
+  id uuid primary key default gen_random_uuid(),
+  data date not null default current_date,
+  titulo text not null, safra text, centro_custo text,
+  status text not null default 'Solicitado' check (status in ('Solicitado','Cotação','Comprado','Recebido','Cancelado')),
+  obs text, origem text, arquivado boolean not null default false,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now()
+);
+create table public.pedido_itens (
+  id uuid primary key default gen_random_uuid(),
+  pedido_id uuid not null references public.pedidos_compra(id),
+  insumo_id uuid references public.insumos(id),
+  produto text not null, quantidade numeric(14,3), unidade text,
+  valor_unitario numeric(14,4), quantidade_realizada numeric(14,3), valor_total numeric(14,2), obs text
+);
+
+-- ---------------------------------------------------------------- colaboradores
+create table public.colaboradores (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null, funcao text, telefone text,
+  situacao text not null default 'Ativo' check (situacao in ('Ativo','Afastado','Desligado')),
+  admissao date, perfil_id uuid references public.perfis(id), obs text,
+  arquivado boolean not null default false,
+  criado_por uuid default auth.uid() references public.perfis(id),
+  criado_em timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------- acesso
+do $$
+declare t text;
+begin
+  -- leitura para qualquer usuário ativo; escrita de cadastro/planos para gestor
+  foreach t in array array['rebanho_mensal','ocorrencias','maquinas','manutencoes','insumos','servicos','servico_itens',
+                           'insumo_movimentos','formulas','formula_itens','plano_nutricional'] loop
+    execute format('alter table public.%1$s enable row level security', t);
+    execute format('create policy ler_%1$s on public.%1$s for select to authenticated using (public.usuario_ativo())', t);
+    execute format('create policy gestor_ins_%1$s on public.%1$s for insert to authenticated with check (public.eh_gestor())', t);
+    execute format('create policy gestor_upd_%1$s on public.%1$s for update to authenticated using (public.eh_gestor()) with check (public.eh_gestor())', t);
+    execute format('create trigger trg_audit_%1$s after insert or update or delete on public.%1$s for each row execute function public.registrar_auditoria()', t);
+  end loop;
+  -- só gestor vê (valores de compra e dados pessoais)
+  foreach t in array array['pedidos_compra','pedido_itens','colaboradores'] loop
+    execute format('alter table public.%1$s enable row level security', t);
+    execute format('create policy gestor_sel_%1$s on public.%1$s for select to authenticated using (public.eh_gestor())', t);
+    execute format('create policy gestor_ins_%1$s on public.%1$s for insert to authenticated with check (public.eh_gestor())', t);
+    execute format('create policy gestor_upd_%1$s on public.%1$s for update to authenticated using (public.eh_gestor()) with check (public.eh_gestor())', t);
+    execute format('create trigger trg_audit_%1$s after insert or update or delete on public.%1$s for each row execute function public.registrar_auditoria()', t);
+  end loop;
+end $$;
+
+-- lançamentos de campo que o operador pode fazer
+create policy campo_ins_ocorrencias on public.ocorrencias for insert to authenticated with check (public.usuario_ativo());
+create policy campo_ins_manutencoes on public.manutencoes for insert to authenticated with check (public.usuario_ativo());
+create policy campo_ins_movimentos  on public.insumo_movimentos for insert to authenticated
+  with check (public.usuario_ativo() and (public.eh_gestor() or tipo = 'Saída'));
+-- responsável pode atualizar o andamento do serviço
+create policy resp_upd_servicos on public.servicos for update to authenticated
+  using (public.usuario_ativo() and responsavel_id = auth.uid()) with check (public.usuario_ativo() and responsavel_id = auth.uid());
+
+-- >>>>>>>>>> migrations/007_importacao_planos.sql
+-- Importação dos planos da Fazenda 2 (gerado por importacao/gerar_sql_planos.py — não editar à mão)
+begin;
+do $$ begin if exists (select 1 from public.tarefas where categoria = 'IATF' and descricao like 'Programação IATF%') then raise exception 'Planos já importados antes. Nada foi alterado.'; end if; end $$;
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 1º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba OUTUBRO)', '2026-10-26', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 4º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba OUTUBRO)', '2026-10-27', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 2º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba OUTUBRO)', '2026-10-26', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 3º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba OUTUBRO)', '2026-10-26', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · IND. PRECOCINHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba OUTUBRO)', '2026-10-27', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-03', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D9 3º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-04', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-05', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D11 3º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-06', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D12 IND. PRECOCINHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-03', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 4º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-04', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-05', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 4º LT MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-06', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 1º LT DE PRIMIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-09', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-10', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 5º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-09', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 6º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-09', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 VACAS SOLT. CHANCE', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-10', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1º LT DE PRIMIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1º LT DE PRIMIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-19', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-20', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 PRECOCINHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-21', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 5º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 5º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-19', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 6º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 VACAS SOLT. CHANCE', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 6º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-19', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 VACAS SOLT. CHANCE', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-20', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D7 PRECOCINHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-28', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D9/I.A PRECOCINHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-30', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D0 7º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba NOVEMBRO)', '2026-11-30', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 1º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 7º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-08', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 7º LT DE MULTIPARAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-10', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 2º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 3º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 4º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. 1º e 2º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-15', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. 1º e 2º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. 3º e 4º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-15', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. 3º e 4º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 5º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-28', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 1ºLT DE PREC.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-29', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 6º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-28', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 1º LT DE PRIM.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-28', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. VACAS SOLT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-29', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba DEZEMBRO)', '2026-12-29', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. 5º e 6º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-05', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-06', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. 5º e 6º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-08', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. 1º LT DE PRIM.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-05', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. 1º LT DE PRIM.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D7 1ªRESS. 1ºLT DE PREC.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-05', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. VACAS SOLT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-06', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D9 1ªRESS. 1ºLT DE PREC.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-07', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. VACAS SOLT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-08', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 1ªRESS. 7º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-11', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. 1º e 2º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 1ªRESS. 7º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-19', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 1ªRESS. 7º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-21', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. 3º e 4º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. 1º e 2º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-26', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. 1º e 2º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-28', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. 3º e 4º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-26', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. 3º e 4º LT MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba JANEIRO)', '2027-01-28', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. 5º e 6º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-08', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-09', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D22 1ªRESS. 7º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-12', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. 1º LT DE PRIM.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-08', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. 1ºLT DE PREC.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-08', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D0 2ªRESS. VACAS SOLT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-09', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. 5º e 6º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-16', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. 5º e 6º LT DE MULT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. NOVILHAS', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-19', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · DG/D8 2ªRESS. 7º LT DE MULTI.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-20', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. 1º LT DE PRIM.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-16', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. 1º LT DE PRIM.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. 1ºLT DE PREC.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-16', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D8 2ªRESS. VACAS SOLT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-17', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. 1ºLT DE PREC.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-18', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. VACAS SOLT.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-19', 'alta', 'IATF', null);
+insert into public.tarefas (titulo, descricao, data, prioridade, categoria, local_texto) values ('IATF · D10 2ªRESS. 7º LT DE MULTI.', 'Programação IATF (planilha IATF - PROGRAMAÇÃO, aba FEVEREIRO)', '2027-02-22', 'alta', 'IATF', null);
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Fêmeas', 'Bezerras de 0 a 4 meses', 1, 346, 57, 0, 0, 0, 0, 0, 0, 1, 0, 402, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Fêmeas', 'Bezerras de 5 a 12 meses', 2, 439, 0, 0, 0, 157, 0, 168, 0, 0, 0, 114, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Fêmeas', 'Novilhas de 13 a 24 meses', 3, 361, 0, 0, 0, 119, 157, 0, 0, 2, 0, 397, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Fêmeas', 'Novilhas de 25 a 36 meses', 4, 270, 0, 0, 0, 80, 119, 0, 0, 0, 0, 309, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Fêmeas', 'Vacas acima de 36 meses', 5, 1315, 0, 0, 0, 0, 80, 0, 0, 0, 0, 1395, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Machos', 'Bezerros de 0 a 4 meses', 6, 314, 75, 0, 0, 0, 0, 0, 0, 0, 0, 389, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Machos', 'Bezerros de 5 a 12 meses', 7, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Machos', 'Garrotes de 13 a 24 meses', 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Machos', 'Garrotes de 25 a 36 meses', 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Machos', 'Bois acima de 36 meses', 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Machos', 'Touros', 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Equinos', 'Cavalos', 12, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Equinos', 'Éguas', 13, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Equinos', 'Muares', 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Equinos', 'Potros', 15, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.rebanho_mensal (fazenda_id, mes, grupo, categoria, ordem, estoque_anterior, nascimento, compra, transf_entrada, mudanca_menos, mudanca_mais, venda, ajuste_inventario, morte, abate, estoque_atual, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-01', 'Equinos', 'Potras', 16, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 'Rel1026.xlsx / aba Fazenda 2 - Sta Adriana') on conflict do nothing;
+insert into public.ocorrencias (fazenda_id, data, tipo, numero, sexo, chip, idade_texto, causa, obs, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-31', 'Morte', '8189', 'F', null, '2m', 'Cobra', 'Data exata não informada; registrado no relatório de 10/2026.', 'Rel1026.xlsx / aba Movimento Sta Adriana');
+insert into public.ocorrencias (fazenda_id, data, tipo, numero, sexo, chip, idade_texto, causa, obs, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-31', 'Morte', '6151', 'F', '268106', '24m', 'Parto', 'Data exata não informada; registrado no relatório de 10/2026.', 'Rel1026.xlsx / aba Movimento Sta Adriana');
+insert into public.ocorrencias (fazenda_id, data, tipo, numero, sexo, chip, idade_texto, causa, obs, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), '2026-10-31', 'Morte', '6209', 'F', '268086', '24m', 'Parto', 'Data exata não informada; registrado no relatório de 10/2026.', 'Rel1026.xlsx / aba Movimento Sta Adriana');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P27b', '2026/27', 1, (select id from public.pastos where codigo = 'P27b' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P27b', 106.9, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27b / linha 7');
+insert into public.insumos (nome, unidade, categoria) values ('Herbicida Imazetapir', 'L', 'Defensivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27b / linha 7'), (select id from public.insumos where nome = 'Herbicida Imazetapir'), 'Herbicida Imazetapir', 3.5, 'L/ha', 374.15, 'L');
+insert into public.insumos (nome, unidade, categoria) values ('Adjuvante Adesil/Agefix', 'L', 'Defensivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27b / linha 7'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 53.45, 'L');
+insert into public.insumos (nome, unidade, categoria) values ('Herb. Tordon + Dominun', 'L', 'Defensivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27b / linha 7'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 160.35, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27b / linha 7'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 53.45, 'L');
+insert into public.insumos (nome, unidade, categoria) values ('Adubo Cobertura', 't', 'Adubo/Corretivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27b / linha 7'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 21.38, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P27a', '2026/27', 2, (select id from public.pastos where codigo = 'P27a' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P27a', 83.0, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27a / linha 8');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27a / linha 8'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 124.5, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P27a / linha 8'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 41.5, 'L');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P4', '2026/27', 3, (select id from public.pastos where codigo = 'P4' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P4', 49.71, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P4 / linha 9');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P4 / linha 9'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 74.565, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P4 / linha 9'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 24.855, 'L');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P5', '2026/27', 4, (select id from public.pastos where codigo = 'P5' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P5', 180.85, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P5 / linha 10');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P5 / linha 10'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 271.275, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P5 / linha 10'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 90.425, 'L');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P28', '2026/27', 5, (select id from public.pastos where codigo = 'P28' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P28', 138.0, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P28 / linha 11');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P28 / linha 11'), (select id from public.insumos where nome = 'Herbicida Imazetapir'), 'Herbicida Imazetapir', 3.5, 'L/ha', 483.0, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P28 / linha 11'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 69.0, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P28 / linha 11'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 207.0, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P28 / linha 11'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 69.0, 'L');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P11', '2026/27', 6, (select id from public.pastos where codigo = 'P11' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P11', 129.0, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P11 / linha 12');
+insert into public.insumos (nome, unidade, categoria) values ('Calcário Dolomítico', 't', 'Adubo/Corretivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P11 / linha 12'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 2.0, 't/ha', 258.0, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P11 / linha 12'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 193.5, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P11 / linha 12'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 64.5, 'L');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P18', '2026/27', 7, (select id from public.pastos where codigo = 'P18' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P18', 94.78, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P18 / linha 13');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P18 / linha 13'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 2.5, 't/ha', 236.95, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P18 / linha 13'), (select id from public.insumos where nome = 'Herbicida Imazetapir'), 'Herbicida Imazetapir', 3.5, 'L/ha', 331.73, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P18 / linha 13'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 47.39, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P18 / linha 13'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 142.17, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P18 / linha 13'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 47.39, 'L');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P12', '2026/27', 8, (select id from public.pastos where codigo = 'P12' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P12', 144.6, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P12 / linha 14');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P12 / linha 14'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 4.0, 't/ha', 578.4, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P13', '2026/27', 9, (select id from public.pastos where codigo = 'P13' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P13', 104.8, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P13 / linha 15');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P13 / linha 15'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 157.2, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P13 / linha 15'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 52.4, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P13 / linha 15'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 20.96, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Manutenção de pasto', 'Manutenção de pasto P14', '2026/27', 10, (select id from public.pastos where codigo = 'P14' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P14', 111.07, 'Planejado', 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P14 / linha 16');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P14 / linha 16'), (select id from public.insumos where nome = 'Herb. Tordon + Dominun'), 'Herb. Tordon + Dominun', 1.5, 'L/ha', 166.605, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P14 / linha 16'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 55.535, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / MANUTENÇÃO / P14 / linha 16'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 22.214, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Reforma de pasto', 'Reforma de pasto P28', '2026/27', 1, (select id from public.pastos where codigo = 'P28' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P28', 34.0, 'Planejado', 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 1.5, 't/ha', 51.0, 't');
+insert into public.insumos (nome, unidade, categoria) values ('Herbicida Tucson', 'L', 'Defensivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24'), (select id from public.insumos where nome = 'Herbicida Tucson'), 'Herbicida Tucson', 3.0, 'L/ha', 102.0, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 17.0, 'L');
+insert into public.insumos (nome, unidade, categoria) values ('Semente Piatã', 'kg', 'Semente') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24'), (select id from public.insumos where nome = 'Semente Piatã'), 'Semente Piatã', 15.0, 'kg/ha', 510.0, 'kg');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 6.8, 't');
+insert into public.insumos (nome, unidade, categoria) values ('Adubo MAP', 't', 'Adubo/Corretivo') on conflict (nome) do nothing;
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P28 / linha 24'), (select id from public.insumos where nome = 'Adubo MAP'), 'Adubo MAP', 0.1, 't/ha', 3.4, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Reforma de pasto', 'Reforma de pasto P7', '2026/27', 2, (select id from public.pastos where codigo = 'P7' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P7', 115.0, 'Planejado', 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 1.5, 't/ha', 172.5, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25'), (select id from public.insumos where nome = 'Herbicida Tucson'), 'Herbicida Tucson', 3.0, 'L/ha', 345.0, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 57.5, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25'), (select id from public.insumos where nome = 'Semente Piatã'), 'Semente Piatã', 15.0, 'kg/ha', 1725.0, 'kg');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 23.0, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P7 / linha 25'), (select id from public.insumos where nome = 'Adubo MAP'), 'Adubo MAP', 0.1, 't/ha', 11.5, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Reforma de pasto', 'Reforma de pasto P8', '2026/27', 3, (select id from public.pastos where codigo = 'P8' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P8', 72.04, 'Planejado', 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 1.0, 't/ha', 72.04, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26'), (select id from public.insumos where nome = 'Herbicida Tucson'), 'Herbicida Tucson', 3.0, 'L/ha', 216.12, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 36.02, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26'), (select id from public.insumos where nome = 'Semente Piatã'), 'Semente Piatã', 15.0, 'kg/ha', 1080.6, 'kg');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 14.408, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P8 / linha 26'), (select id from public.insumos where nome = 'Adubo MAP'), 'Adubo MAP', 0.1, 't/ha', 7.204, 't');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, prioridade, pasto_id, local_texto, area_ha, status, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Reforma de pasto', 'Reforma de pasto P10', '2026/27', 4, (select id from public.pastos where codigo = 'P10' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P10', 141.0, 'Planejado', 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 1.5, 't/ha', 211.5, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27'), (select id from public.insumos where nome = 'Herbicida Tucson'), 'Herbicida Tucson', 3.0, 'L/ha', 423.0, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 0.5, 'L/ha', 70.5, 'L');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27'), (select id from public.insumos where nome = 'Semente Piatã'), 'Semente Piatã', 15.0, 'kg/ha', 2115.0, 'kg');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27'), (select id from public.insumos where nome = 'Adubo Cobertura'), 'Adubo Cobertura', 0.2, 't/ha', 28.2, 't');
+insert into public.servico_itens (servico_id, insumo_id, produto, dose, unidade_dose, quantidade, unidade) values ((select id from public.servicos where origem = 'Plano_Pastagens_2026.27 / REFORMA / P10 / linha 27'), (select id from public.insumos where nome = 'Adubo MAP'), 'Adubo MAP', 0.1, 't/ha', 14.1, 't');
+insert into public.pedidos_compra (data, titulo, safra, status, obs, origem) values ('2026-10-19', 'Insumos do Plano de Pastagens 2026/27', '2026/27', 'Comprado', 'Quantidade prevista e valor unitário conforme o resumo da planilha; quantidade e valor realizados conforme coluna REALIZADO.', 'Plano_Pastagens_2026.27 / RESUMO');
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Adubo MAP'), 'Adubo MAP', 36.204, 't', 5649.0, 37.0, 204516.396);
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Calcário Dolomítico'), 'Calcário Dolomítico', 1580.39, 't', 132.0, 1592.0, 199000.0);
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Herbicida Imazetapir'), 'Herbicida Imazetapir', 1188.88, 'L', 23.0, 1200.0, 25423.44);
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Herbicida Tucson'), 'Herbicida Tucson', 1086.12, 'L', 23.0, 1180.0, 25960.0);
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Adjuvante Adesil/Agefix'), 'Adjuvante Adesil/Agefix', 849.915, 'L', 12.9, 860.0, 10724.0);
+insert into public.insumos (nome, unidade, categoria) values ('Herbicida Tordon Ultra-S', 'L', 'Defensivo') on conflict (nome) do nothing;
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Herbicida Tordon Ultra-S'), 'Herbicida Tordon Ultra-S', 1142.71, 'L', 44.0, 1180.0, 51920.0);
+insert into public.insumos (nome, unidade, categoria) values ('Herbicida Dominum XTS', 'L', 'Defensivo') on conflict (nome) do nothing;
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Herbicida Dominum XTS'), 'Herbicida Dominum XTS', 571.355, 'L', 102.0, 600.0, 61200.0);
+insert into public.insumos (nome, unidade, categoria) values ('Semente Piatã (revestida)', 'kg', 'Semente') on conflict (nome) do nothing;
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Semente Piatã (revestida)'), 'Semente Piatã (revestida)', 5430.6, 'kg', 9.9, 6000.0, 57480.0);
+insert into public.insumos (nome, unidade, categoria) values ('Adubo Cobertura (Varredura)', 't', 'Adubo/Corretivo') on conflict (nome) do nothing;
+insert into public.pedido_itens (pedido_id, insumo_id, produto, quantidade, unidade, valor_unitario, quantidade_realizada, valor_total) values ((select id from public.pedidos_compra where origem = 'Plano_Pastagens_2026.27 / RESUMO'), (select id from public.insumos where nome = 'Adubo Cobertura (Varredura)'), 'Adubo Cobertura (Varredura)', 136.962, 't', 1908.0, 137.0, 261396.0);
+insert into public.formulas (nome, descricao, origem) values ('Proteinado águas', 'Fórmula da planilha Nutrição Connan 10.2026', 'Nutrição Connan 10.2026 F2') on conflict (nome) do nothing;
+insert into public.insumos (nome, unidade, categoria) values ('Milho', 'kg', 'Nutrição') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado águas'), (select id from public.insumos where nome = 'Milho'), 0.585);
+insert into public.insumos (nome, unidade, categoria) values ('Resíduo de soja', 'kg', 'Nutrição') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado águas'), (select id from public.insumos where nome = 'Resíduo de soja'), 0.21);
+insert into public.insumos (nome, unidade, categoria) values ('Núcleo Connan Mult', 'kg', 'Nutrição') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado águas'), (select id from public.insumos where nome = 'Núcleo Connan Mult'), 0.125);
+insert into public.insumos (nome, unidade, categoria) values ('Ureia', 'kg', 'Nutrição') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado águas'), (select id from public.insumos where nome = 'Ureia'), 0.03);
+insert into public.insumos (nome, unidade, categoria) values ('Sal branco', 'kg', 'Nutrição') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado águas'), (select id from public.insumos where nome = 'Sal branco'), 0.05);
+insert into public.formulas (nome, descricao, origem) values ('Proteinado seca', 'Fórmula da planilha Nutrição Connan 10.2026', 'Nutrição Connan 10.2026 F2') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado seca'), (select id from public.insumos where nome = 'Milho'), 0.48);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado seca'), (select id from public.insumos where nome = 'Resíduo de soja'), 0.22);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado seca'), (select id from public.insumos where nome = 'Núcleo Connan Mult'), 0.15);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado seca'), (select id from public.insumos where nome = 'Ureia'), 0.05);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Proteinado seca'), (select id from public.insumos where nome = 'Sal branco'), 0.1);
+insert into public.formulas (nome, descricao, origem) values ('Ração engorda', 'Fórmula da planilha Nutrição Connan 10.2026', 'Nutrição Connan 10.2026 F2') on conflict (nome) do nothing;
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Ração engorda'), (select id from public.insumos where nome = 'Milho'), 0.745);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Ração engorda'), (select id from public.insumos where nome = 'Resíduo de soja'), 0.18);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Ração engorda'), (select id from public.insumos where nome = 'Núcleo Connan Mult'), 0.04);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Ração engorda'), (select id from public.insumos where nome = 'Ureia'), 0.02);
+insert into public.formula_itens (formula_id, insumo_id, percentual) values ((select id from public.formulas where nome = 'Ração engorda'), (select id from public.insumos where nome = 'Sal branco'), 0.015);
+insert into public.plano_nutricional (ano, mes, categoria, lote, n_animais, formula_id, suplemento_texto, consumo_kg_cab_dia, dias, previsto_kg, origem) values (2026, 9, 'VACAS DESCARTES', 'ABATE', 120.0, (select id from public.formulas where nome = 'Ração engorda'), 'RAÇÃO ENGORDA', 6.0, 30.0, 21600.0, 'Nutrição Connan 10.2026 F2 / CALENDARIO 2026');
+insert into public.plano_nutricional (ano, mes, categoria, lote, n_animais, formula_id, suplemento_texto, consumo_kg_cab_dia, dias, previsto_kg, origem) values (2026, 10, 'VACAS DESCARTES', 'ABATE', 120.0, (select id from public.formulas where nome = 'Ração engorda'), 'RAÇÃO ENGORDA', 6.0, 30.0, 10800.0, 'Nutrição Connan 10.2026 F2 / CALENDARIO 2026');
+insert into public.plano_nutricional (ano, mes, categoria, lote, n_animais, formula_id, suplemento_texto, consumo_kg_cab_dia, dias, previsto_kg, origem) values (2026, 9, 'VACAS PARIDAS', 'PARIDAS', 300.0, null, 'PROTEINADO SECA PROTEINADO AGUAS', 2.0, 15.0, 9000.0, 'Nutrição Connan 10.2026 F2 / CALENDARIO 2026');
+insert into public.plano_nutricional (ano, mes, categoria, lote, n_animais, formula_id, suplemento_texto, consumo_kg_cab_dia, dias, previsto_kg, origem) values (2026, 10, 'VACAS PARIDAS', 'PARIDAS', 300.0, null, 'PROTEINADO SECA PROTEINADO AGUAS', 2.0, 30.0, 9000.0, 'Nutrição Connan 10.2026 F2 / CALENDARIO 2026');
+insert into public.plano_nutricional (ano, mes, categoria, lote, n_animais, formula_id, suplemento_texto, consumo_kg_cab_dia, dias, previsto_kg, origem) values (2026, 11, 'VACAS PARIDAS', 'PARIDAS', 300.0, null, 'PROTEINADO SECA PROTEINADO AGUAS', 2.0, 30.0, 9000.0, 'Nutrição Connan 10.2026 F2 / CALENDARIO 2026');
+update public.insumos set obs = 'Estoque informado na planilha de nutrição em 25/08: ' || 'Núcleo Connan Mult: 2310 kg; Milho: 63000 kg; Resíduo de soja: 20400 kg; Ureia: 750 kg; Sal branco: 800 kg' where categoria = 'Nutrição';
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Cerca APP 9 (1.100 mt c/ lance de 6,0 mt e 4 fios)', null, null, null, 1100.0, 'Planejado', null, 10410.0, null, '15 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+6 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+5 bolas de arame liso de 2,7 mm', 'Programa Cercas 10.2026 F2 / Cerca APP 9 (1.100 mt c/ lance de 6,0 mt e 4 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Cerca APP 5 (800 mt c/ lance de 6,0 mt e 4 fios)', null, null, null, 800.0, 'Planejado', null, 7910.0, null, '11 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+5 esticadores de 15 a 18 cm, c/ 2,70 mt de Eucalipto
+4 bolas de arame liso de 2,7 mm', 'Programa Cercas 10.2026 F2 / Cerca APP 5 (800 mt c/ lance de 6,0 mt e 4 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Cerca P27b c/ mata (1.200 mt c/ lance de 6,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P27b' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P27b', 1200.0, 'Planejado', null, 12010.0, 5400.0, '17 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+7 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+6 bolas de arame liso de 2,7 mm', 'Programa Cercas 10.2026 F2 / Cerca P27b c/ mata (1.200 mt c/ lance de 6,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Divisa P27a c/ mata (1.200 mt c/ lance de 6,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P27a' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P27a', 1200.0, 'Planejado', null, 12010.0, 5400.0, '17 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+7 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+6 bolas de arame liso 2,7 mm', 'Programa Cercas 10.2026 F2 / Divisa P27a c/ mata (1.200 mt c/ lance de 6,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', '1 Divisão no P27a (1.000 mt c/ lance de 5,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P27a' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P27a', 1000.0, 'Planejado', null, 11310.0, null, '17 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+6 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+5 bolas de arame liso de 3,0 mm', 'Programa Cercas 10.2026 F2 / 1 Divisão no P27a (1.000 mt c/ lance de 5,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Cerca divisa P11 c/ P12 (1.400 mt c/ lance de 5,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P11' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P11, P12', 1400.0, 'Planejado', null, 15860.0, null, '24 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+8 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+7 bolas de arame liso 3,0 mm', 'Programa Cercas 10.2026 F2 / Cerca divisa P11 c/ P12 (1.400 mt c/ lance de 5,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Cerca do P11 c/ corredor (1.200 mt c/ lance de 6,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P11' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P11', 1200.0, 'Planejado', null, 12010.0, null, '17 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+7 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+6 bolas de arame liso de 2,7 mm', 'Programa Cercas 10.2026 F2 / Cerca do P11 c/ corredor (1.200 mt c/ lance de 6,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', '4 Divisões no P10 (2.000 mt c/ lance de 5,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P10' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P10', 2000.0, 'Planejado', null, 22620.0, null, '34 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+12 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+10 bolas de arame liso de 3,0 mm', 'Programa Cercas 10.2026 F2 / 4 Divisões no P10 (2.000 mt c/ lance de 5,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', '1 Divisão no P18 (1.200 mt c/ lance de 5,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P18' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P18', 1200.0, 'Planejado', null, 13520.0, null, '20 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+8 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+6 bolas de arame liso 3,0 mm', 'Programa Cercas 10.2026 F2 / 1 Divisão no P18 (1.200 mt c/ lance de 5,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Cerca divisa do P7 e P8 c/ vizinho (2.500 mt c/ lance de 6,0 mt e 5 fios)', null, (select id from public.pastos where codigo = 'P7' and fazenda_id = (select id from public.fazendas where nome = 'Santa Adriana II')), 'P7, P8', 2500.0, 'Planejado', null, 24690.0, 11250.0, '35 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+12 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+13 bolas de arame liso 2,7 mm', 'Programa Cercas 10.2026 F2 / Cerca divisa do P7 e P8 c/ vizinho (2.500 mt c/ lance de 6,0 mt e 5 fios)');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Diversos', null, null, null, null, 'Planejado', null, 3840.0, null, '4 dúzias de lascas de 10 a 12 cm, c/ 2,20 mt de Eucalipto
+6 esticadores de 15 a 18 cm, c/ 3,0 mt de Eucalipto
+2 bolas de arame liso de 2,7 mm', 'Programa Cercas 10.2026 F2 / Diversos');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Cerca', 'Porteiras ferro', null, null, null, null, 'Planejado', null, 7200.0, null, '6 Porteiras de 5,0 mt - R$ 7.200,
+dz lascas * 211 dz lascas de 10 a 12 cm, c/ 2,20 mt
+bolas arame liso * 44 bolas de arame de 2,7 mm', 'Programa Cercas 10.2026 F2 / Porteiras ferro');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Benfeitoria', 'Remanga lateral de passagem', null, null, null, null, 'Planejado', null, null, null, '4 porteiras de 4,0 mt de Itaúba ou Garrote
+6 palanques de 21 a 25 cm c/ 3,50 mt, de Eucalipto', 'Programa Cercas 10.2026 F2 / Remanga lateral de passagem');
+insert into public.servicos (fazenda_id, tipo, titulo, safra, pasto_id, local_texto, metragem_m, status, data_prevista, custo_material_previsto, custo_mo_previsto, descricao, origem) values ((select id from public.fazendas where nome = 'Santa Adriana II'), 'Benfeitoria', 'Curral interno', null, null, null, null, 'Planejado', null, null, null, '31 Palanques de 21 a 25 cm c/ 3,50 mt, de Itaúba ou Garrote - 34.100,
+25 Tábuas de 15 x 3,0 cm (ou 3,5 cm), c/ 4,20 a 4,50 mt de Itaúba ou Garrote - 165,/tb - 4.721,
+4 Porteiras de 3,0 mt de Itaúba ou Garrote
+1 Porteira de 4,0 mt', 'Programa Cercas 10.2026 F2 / Curral interno');
+commit;

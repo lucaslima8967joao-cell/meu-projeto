@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { TIPOS_AREA, baixarCSV, erroAmigavel, hojeISO, num } from '../lib/formato'
+import { TIPOS_AREA, baixarCSV, erroAmigavel, hojeISO, num, ordemNatural } from '../lib/formato'
 import { buscarTodos, useListas } from '../lib/dados'
 import { enfileirar, lerComCache, novoId } from '../lib/offline'
 import { AvisoCache } from './Pendencias'
@@ -25,7 +25,7 @@ export default function Pastos() {
   const [cache, setCache] = useState<{ doCache: boolean; em?: string }>({ doCache: false })
   useEffect(() => {
     lerComCache('v_pastos', () => buscarTodos<Pasto>((de, ate) => supabase.from('v_pastos').select('*').eq('arquivado', false).order('codigo').range(de, ate)), [] as Pasto[])
-      .then(r => { setPastos(r.dados); setCache(r) }, () => setPastos([]))
+      .then(r => { setPastos([...r.dados].sort((a, b) => ordemNatural(a.codigo, b.codigo))); setCache(r) }, () => setPastos([]))
   }, [n])
   useEffect(() => { if (!fz && fazendas.length) setFz(fazendas[0].id) }, [fazendas, fz])
 
