@@ -54,7 +54,8 @@ export default function Tarefas() {
 
   async function status(t: Tarefa, s: Tarefa['status']) {
     let obs = t.obs_execucao
-    if (s === 'concluida') { const o = prompt('Observação da execução (opcional):', obs || ''); if (o === null) return; obs = o || null }
+    // "Cancelar" na janela do celular só pula a observação — a tarefa é concluída do mesmo jeito
+    if (s === 'concluida') { const o = prompt('Observação da execução (opcional — pode deixar em branco):', obs || ''); if (o !== null) obs = o || null }
     setLista(l => l.map(x => (x.id === t.id ? { ...x, status: s, obs_execucao: obs } : x))) // mostra na hora
     const enviado = await enfileirar({ tipo: 'update', tabela: 'tarefas', alvo: t.id, dados: { status: s, obs_execucao: obs } }, `Tarefa "${t.titulo}": ${STATUS[s]}`)
     setOk(enviado ? '' : 'Mudança guardada no aparelho. Será enviada quando houver internet.'); carregar()

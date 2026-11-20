@@ -42,9 +42,9 @@ export default function Servicos() {
     setConfirmando(null)
     if (status === 'Planejado') { dados.data_realizada = null }
     if (status === 'Concluído') {
-      const c = prompt('Custo realizado (R$), se souber:', s.custo_realizado?.toString() || '')
-      if (c === null) return
-      if (c.trim()) dados.custo_realizado = Number(c.replace(/\./g, '').replace(',', '.'))
+      // "Cancelar" na janela do celular só pula o custo — o serviço é concluído do mesmo jeito
+      const c = prompt('Custo realizado (R$) — opcional, pode deixar em branco:', s.custo_realizado?.toString() || '')
+      if (c && c.trim()) dados.custo_realizado = Number(c.replace(/\./g, '').replace(',', '.'))
       dados.data_realizada = hojeISO()
     }
     setLista(l => l.map(x => x.id === s.id ? { ...x, ...dados } as Servico : x))
