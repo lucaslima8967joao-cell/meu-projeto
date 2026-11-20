@@ -17,6 +17,7 @@ import Busca from './pages/Busca'
 import Sistema from './pages/Sistema'
 import Cantina from './pages/Cantina'
 import MinhaConta from './pages/MinhaConta'
+import Leitor from './pages/Leitor'
 import Pendencias, { StatusSincronizacao } from './pages/Pendencias'
 import Rebanho from './pages/Rebanho'
 import Servicos from './pages/Servicos'
@@ -78,6 +79,7 @@ export default function App() {
       <nav className="menu">
         <NavLink to="/" end>Painel</NavLink>
         <NavLink to="/animais">Animais</NavLink>
+        <NavLink to="/leitor">📡 Leitor</NavLink>
         <NavLink to="/nascimento">Nascimento</NavLink>
         <NavLink to="/rebanho">Rebanho</NavLink>
         <NavLink to="/tarefas?categoria=IATF" className={() => (ehIatf ? 'active' : '')}>IATF</NavLink>
@@ -114,6 +116,7 @@ export default function App() {
           <Route path="/colaboradores" element={gestor ? <Colaboradores /> : <Navigate to="/" />} />
           <Route path="/cantina" element={<Cantina />} />
           <Route path="/busca" element={<Busca />} />
+          <Route path="/leitor" element={<Leitor />} />
           <Route path="/conta" element={<MinhaConta />} />
           <Route path="/sistema" element={admin ? <Sistema /> : <Navigate to="/" />} />
           <Route path="/pendencias" element={<Pendencias />} />

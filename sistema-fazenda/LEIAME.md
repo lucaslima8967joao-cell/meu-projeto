@@ -95,6 +95,22 @@ O e-mail gratuito do Supabase tem limite (poucos por hora) e pode não chegar. P
 - **Não lembra e não está logado?** O **administrador** entra em **Usuários → Definir nova senha** e passa a senha pessoalmente; a pessoa troca depois em *Minha conta*.
 - Para o e-mail de recuperação funcionar sempre, configure um SMTP próprio em Supabase → Authentication → Emails (opcional).
 
+## 📡 Leitor de brinco (bastão)
+Menu **📡 Leitor**. Funciona sem internet (grava e envia depois).
+- **Ligar o bastão:** emparelhe por Bluetooth no celular/PC em **modo teclado (HID)**. Cada brinco lido "digita" o número + Enter na tela do Leitor.
+- **Identificar:** lê o brinco e mostra o animal (número, categoria, lote, abrir ficha). Brinco não cadastrado → botão *Cadastrar animal com este chip* (já vem preenchido).
+- **Manejo no curral:** escolha *Pesagem*, *Diagnóstico de prenhez*, *Vacinação*, *Troca de pasto* ou *Só contar*; leia um animal atrás do outro. Avisa leitura repetida e mostra o resumo da sessão (quantidade, peso médio).
+- **Conferir lote ou pasto:** mostra quem falta ler e quem foi lido fora do grupo.
+- **Arquivo do bastão:** bastões/balanças que guardam a memória exportam TXT/CSV (brinco e peso por linha); o sistema lê e lança as pesagens.
+- Aceita o chip completo (982 000123456789), sem espaço, ou só o final do chip.
+
+## 🤖 Assistente (lançamentos pelo chat)
+Você manda no chat o que aconteceu no dia ("pasto 18 jogou 300 t de calcário", "patrimônio 01 abasteceu 30 L de diesel") e o Claude lança no lugar certo (serviços, estoque, máquinas, pesagens, ocorrências etc.).
+- O administrador gera a chave em **Usuários → Gerar chave do Assistente** (aparece uma vez só; o banco guarda apenas o "hash").
+- O Assistente só grava nas tabelas de lançamento do dia; não apaga nada, não mexe em usuários nem senhas. Tudo aparece no **Histórico** como "🤖 Assistente".
+- Para cortar o acesso: **Usuários → Desligar** na chave.
+- As máquinas precisam ter o **nº de patrimônio** cadastrado (ex.: 01) para o Assistente achar.
+
 ## Backup e restauração
 - **Automático**: o Supabase guarda backups diários (no plano gratuito, dos últimos dias; no pago, mais tempo e restauração pontual).
 - **Manual (recomendado 1x por semana)**: em **Animais → Exportar Excel (CSV)** você baixa a lista completa.

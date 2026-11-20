@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { erroAmigavel } from '../lib/formato'
 import { useAuth } from '../auth'
 import type { Perfil } from '../lib/tipos'
+import ChaveAssistente from './ChaveAssistente'
 
 export default function Usuarios() {
   const { perfil } = useAuth()
@@ -51,6 +52,7 @@ export default function Usuarios() {
                   <button className="mini" onClick={() => definirSenha(p)}>Salvar senha</button><button className="sec mini" onClick={() => { setSenhaDe(null); setNova('') }}>Não</button></div>
               : <button className="sec mini" onClick={() => { setSenhaDe(p.id); setNova('') }}>Definir nova senha</button>)}</td>
         </tr>)}</tbody></table></div>
+      <ChaveAssistente />
     </>
   )
 }

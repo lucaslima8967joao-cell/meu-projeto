@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { CATEGORIAS, CATEGORIAS_EQUINOS, RACAS, SITUACAO, hojeISO } from '../lib/formato'
 import { useListas } from '../lib/dados'
@@ -15,7 +15,8 @@ export default function AnimalForm() {
   const nav = useNavigate()
   const { gestor } = useAuth()
   const { fazendas, pastos, lotes } = useListas()
-  const [v, setV] = useState(VAZIO)
+  const [params] = useSearchParams()
+  const [v, setV] = useState({ ...VAZIO, chip: params.get('chip') || '' })
   const [erro, setErro] = useState(''), [salvando, setSalvando] = useState(false)
 
   useEffect(() => {

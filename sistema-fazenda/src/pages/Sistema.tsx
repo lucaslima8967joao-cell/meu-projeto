@@ -58,7 +58,7 @@ export default function Sistema() {
         <div className="titulo-acoes"><h2>Histórico de alterações</h2>
           <select value={tabela} onChange={e => setTabela(e.target.value)} style={{ width: 'auto' }}><option value="">Tudo</option>{Object.entries(NOMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         <div className="tabela-rolagem"><table><thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Detalhe</th></tr></thead>
-          <tbody>{aud.map(x => <tr key={x.id}><td>{new Date(x.em).toLocaleString('pt-BR')}</td><td>{x.usuario_id ? pessoas[x.usuario_id] || 'usuário' : 'sistema/importação'}</td>
+          <tbody>{aud.map(x => <tr key={x.id}><td>{new Date(x.em).toLocaleString('pt-BR')}</td><td>{x.usuario_id === '00000000-0000-0000-0000-00000000a551' ? '🤖 Assistente' : x.usuario_id ? pessoas[x.usuario_id] || 'usuário' : 'sistema/importação'}</td>
             <td>{ACAO[x.acao] || x.acao} {NOMES[x.tabela] || x.tabela}</td><td><small>{resumo(x)}</small></td></tr>)}</tbody></table></div>
         {!aud.length && <p className="vazio">Nenhum registro.</p>}
       </section>
