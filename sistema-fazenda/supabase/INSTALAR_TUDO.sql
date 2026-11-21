@@ -2500,3 +2500,7 @@ end $$;
 revoke all on function public.assistente_diagnostico() from public;
 grant execute on function public.assistente_diagnostico() to anon, authenticated;
 
+-- >>>>>>>>>> migrations/015_remover_diagnostico.sql
+-- Diagnóstico da chave já cumpriu o papel; removido.
+drop function if exists public.assistente_diagnostico();
+
